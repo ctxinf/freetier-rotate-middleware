@@ -27,7 +27,7 @@
 - Quota 层：管理 token/day 与 req/min+req/day 双策略。
 - Proxy 层：转发到上游并透传流。
 - Usage Collector：从 response body（SSE 汇总）提取 usage 并回写数据库。
-- Storage：SQLite（WAL）+ ORM（推荐 Prisma/Drizzle）。
+- Storage：SQLite（WAL）+ ORM（推荐 Drizzle）。
 
 ## 4. 数据模型（SQLite）
 
@@ -84,9 +84,9 @@
 ## 6. 实施计划（里程碑）
 
 ### M1 - 基础骨架（1-2 天）
-- 初始化 TypeScript 工程（Fastify/Express + Undici）。
+- 初始化 TypeScript 工程（~~Fastify/Express~~Hono + Undici）。
 - 搭建 `/v1/chat/completions` 兼容入口。
-- 接入 SQLite + ORM，完成迁移脚本。
+- 接入 SQLite + Drizzle，完成迁移脚本。
 
 ### M2 - 路由与策略（2-3 天）
 - 实现 `route_items` 配置加载与优先级遍历。

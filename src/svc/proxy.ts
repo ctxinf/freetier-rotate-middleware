@@ -1,0 +1,238 @@
+import { fetch, Headers } from "undici";
+import type { RouteItem } from "./router.js";
+import type { AppContext } from "./context.js";
+import { requestLogs } from "../storage/schema.js";
+import { collectUsageFromSse } from "./sse-usage.js";
+import type { Usage } from "./quota.js";
+
+type ProxyParams = {
+  app: AppContext;
+  requestId: string;
+  clientReq: Request;
+  clientBody: any;
+  publicModel: string;
+};
+
+function shouldStream(clientBody: any, clientReq: Request): boolean {
+  if (clientBody?.stream === true) return true;
+  const accept = clientReq.headers.get("accept") ?? "";
+  return accept.includes("text/event-stream");
+}
+
+function upstreamUrl(baseUrl: string): string {
+  return new URL("/v1/chat/completions", baseUrl).toString();
+}
+
+function buildUpstreamHeaders(app: AppContext, clientReq: Request, requestId: string): Headers {
+  const h = new Headers();
+  h.set("content-type", "application/json");
+  h.set("x-request-id", requestId);
+
+  const org = clientReq.headers.get("openai-organization");
+  if (org) h.set("openai-organization", org);
+  const project = clientReq.headers.get("openai-project");
+  if (project) h.set("openai-project", project);
+
+  const auth = app.config.upstreamApiKey
+    ? `Bearer ${app.config.upstreamApiKey}`
+    : clientReq.headers.get("authorization");
+  if (auth) h.set("authorization", auth);
+
+  return h;
+}
+
+function filterUpstreamResponseHeaders(up: Response): Headers {
+  const h = new Headers();
+  const ct = up.headers.get("content-type");
+  if (ct) h.set("content-type", ct);
+  const cache = up.headers.get("cache-control");
+  if (cache) h.set("cache-control", cache);
+  const reqId = up.headers.get("x-request-id");
+  if (reqId) h.set("x-request-id", reqId);
+  return h;
+}
+
+async function upsertRequestLog(app: AppContext, row: {
+  requestId: string;
+  routeItemId?: number;
+  status?: number;
+  usage?: Usage;
+  latencyMs?: number;
+}): Promise<void> {
+  await app.db.orm
+    .insert(requestLogs)
+    .values({
+      requestId: row.requestId,
+      routeItemId: row.routeItemId,
+      status: row.status,
+      promptTokens: row.usage?.prompt_tokens,
+      completionTokens: row.usage?.completion_tokens,
+      totalTokens: row.usage?.total_tokens,
+      latencyMs: row.latencyMs
+    })
+    .onConflictDoUpdate({
+      target: requestLogs.requestId,
+      set: {
+        routeItemId: row.routeItemId,
+        status: row.status,
+        promptTokens: row.usage?.prompt_tokens,
+        completionTokens: row.usage?.completion_tokens,
+        totalTokens: row.usage?.total_tokens,
+        latencyMs: row.latencyMs
+      }
+    });
+}
+
+async function tryOneCandidate(
+  p: ProxyParams,
+  candidate: RouteItem,
+  stream: boolean
+): Promise<Response | null> {
+  const acquired = p.app.quota.acquire(candidate, p.clientBody);
+  if (!acquired.ok) return null;
+
+  const upstreamBody = { ...p.clientBody, model: candidate.upstreamModel };
+  const headers = buildUpstreamHeaders(p.app, p.clientReq, p.requestId);
+  const url = upstreamUrl(p.app.config.upstreamBaseUrl);
+  const started = Date.now();
+
+  let upstreamRes: Response;
+  try {
+    upstreamRes = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(upstreamBody)
+    });
+  } catch (e) {
+    p.app.quota.finalize(acquired.reservation, undefined);
+    await upsertRequestLog(p.app, {
+      requestId: p.requestId,
+      routeItemId: candidate.id,
+      status: 502,
+      latencyMs: Date.now() - started
+    });
+    throw e;
+  }
+
+  const latencyMs = Date.now() - started;
+
+  // Retry-able upstream errors: allow fallback to next candidate.
+  if (!upstreamRes.ok && (upstreamRes.status === 429 || upstreamRes.status >= 500)) {
+    p.app.quota.finalize(acquired.reservation, undefined);
+    await upsertRequestLog(p.app, {
+      requestId: p.requestId,
+      routeItemId: candidate.id,
+      status: upstreamRes.status,
+      latencyMs
+    });
+    return null;
+  }
+
+  if (!stream) {
+    const text = await upstreamRes.text();
+    let usage: Usage | undefined;
+    try {
+      const obj = JSON.parse(text);
+      if (obj?.usage) usage = obj.usage as Usage;
+    } catch {
+      // ignore
+    }
+
+    p.app.quota.finalize(acquired.reservation, usage);
+    await upsertRequestLog(p.app, {
+      requestId: p.requestId,
+      routeItemId: candidate.id,
+      status: upstreamRes.status,
+      usage,
+      latencyMs
+    });
+
+    return new Response(text, {
+      status: upstreamRes.status,
+      headers: filterUpstreamResponseHeaders(upstreamRes)
+    });
+  }
+
+  if (!upstreamRes.body) {
+    p.app.quota.finalize(acquired.reservation, undefined);
+    await upsertRequestLog(p.app, {
+      requestId: p.requestId,
+      routeItemId: candidate.id,
+      status: 502,
+      latencyMs
+    });
+    return new Response(JSON.stringify({ error: { message: "Upstream stream missing body" } }), {
+      status: 502,
+      headers: { "content-type": "application/json" }
+    });
+  }
+
+  const [clientStream, collectorStream] = upstreamRes.body.tee();
+  collectUsageFromSse(collectorStream)
+    .then(async (usage) => {
+      p.app.quota.finalize(acquired.reservation, usage);
+      await upsertRequestLog(p.app, {
+        requestId: p.requestId,
+        routeItemId: candidate.id,
+        status: upstreamRes.status,
+        usage,
+        latencyMs
+      });
+    })
+    .catch(async () => {
+      p.app.quota.finalize(acquired.reservation, undefined);
+      await upsertRequestLog(p.app, {
+        requestId: p.requestId,
+        routeItemId: candidate.id,
+        status: upstreamRes.status,
+        latencyMs
+      });
+    });
+
+  return new Response(clientStream, {
+    status: upstreamRes.status,
+    headers: filterUpstreamResponseHeaders(upstreamRes)
+  });
+}
+
+export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
+  const stream = shouldStream(p.clientBody, p.clientReq);
+
+  const candidates = await p.app.router.listCandidates(p.publicModel);
+  if (candidates.length === 0) {
+    const url = upstreamUrl(p.app.config.upstreamBaseUrl);
+    const headers = buildUpstreamHeaders(p.app, p.clientReq, p.requestId);
+    const upstreamBody = { ...p.clientBody, model: p.publicModel };
+    const started = Date.now();
+    const upstreamRes = await fetch(url, { method: "POST", headers, body: JSON.stringify(upstreamBody) });
+    const latencyMs = Date.now() - started;
+
+    if (!stream) {
+      const text = await upstreamRes.text();
+      await upsertRequestLog(p.app, { requestId: p.requestId, status: upstreamRes.status, latencyMs });
+      return new Response(text, { status: upstreamRes.status, headers: filterUpstreamResponseHeaders(upstreamRes) });
+    }
+
+    if (!upstreamRes.body) {
+      await upsertRequestLog(p.app, { requestId: p.requestId, status: 502, latencyMs });
+      return new Response(JSON.stringify({ error: { message: "Upstream stream missing body" } }), {
+        status: 502,
+        headers: { "content-type": "application/json" }
+      });
+    }
+
+    return new Response(upstreamRes.body, { status: upstreamRes.status, headers: filterUpstreamResponseHeaders(upstreamRes) });
+  }
+
+  for (const candidate of candidates) {
+    const res = await tryOneCandidate(p, candidate, stream);
+    if (res) return res;
+  }
+
+  await upsertRequestLog(p.app, { requestId: p.requestId, status: 429 });
+  return new Response(JSON.stringify({ error: { message: "All route items exhausted" } }), {
+    status: 429,
+    headers: { "content-type": "application/json" }
+  });
+}
+
