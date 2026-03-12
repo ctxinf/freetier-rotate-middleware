@@ -14,9 +14,10 @@ type OpenAIListModelsResponse = {
 };
 
 export async function modelsHandler(c: Context, app: AppContext): Promise<Response> {
-  const rows = app.db.raw
-    .prepare("SELECT DISTINCT public_model AS id FROM route_items WHERE enabled = 1 ORDER BY public_model ASC")
-    .all() as Array<{ id: string }>;
+  const rowsRes = await app.db.raw.execute(
+    "SELECT DISTINCT public_model AS id FROM route_items WHERE enabled = 1 ORDER BY public_model ASC"
+  );
+  const rows = ((rowsRes?.rows as any[]) ?? []) as Array<{ id: string }>;
 
   const created = Math.floor(Date.now() / 1000);
   const data: OpenAIModel[] = rows
@@ -33,4 +34,3 @@ export async function modelsHandler(c: Context, app: AppContext): Promise<Respon
   c.header("cache-control", "no-store");
   return c.json(res);
 }
-

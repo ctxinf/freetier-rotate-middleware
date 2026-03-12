@@ -8,6 +8,10 @@ OpenAI Chat Completions compatible gateway with custom routing + quota strategie
    - `npm i`
    - `npm run dev`
 
+## Docker
+- Build is npm-only (no apt/apk in Dockerfile).
+- If you want fully reproducible builds, run `npm install` once locally to update `package-lock.json`, then Docker will use `npm ci`.
+
 ## Seed A Route Item
 Example: per-minute + per-day request limits
 ```bash

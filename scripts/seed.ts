@@ -3,7 +3,7 @@ import { initSchema } from "../src/storage/init.js";
 
 const databasePath = process.env.DATABASE_PATH ?? "./data/gateway.sqlite";
 const db = createGatewayDb(databasePath);
-initSchema(db.raw);
+await initSchema(db);
 
 const publicModel = process.argv[2] ?? "gpt-4o-mini";
 const upstreamModel = process.argv[3] ?? publicModel;
@@ -15,11 +15,10 @@ const strategyType = (process.argv[4] ?? "req_min_day") as "token_day" | "req_mi
 const priority = Number(process.argv[5] ?? "100");
 const configJson = process.argv[6] ?? JSON.stringify({ reqPerMin: 999999, reqPerDay: 999999 });
 
-db.raw
-  .prepare(
-    "INSERT INTO route_items(public_model, upstream_model, strategy_type, priority, config_json, enabled) VALUES(?, ?, ?, ?, ?, 1)"
-  )
-  .run(publicModel, upstreamModel, strategyType, priority, configJson);
+await db.raw.execute({
+  sql: "INSERT INTO route_items(public_model, upstream_model, strategy_type, priority, config_json, enabled) VALUES(?, ?, ?, ?, ?, 1)",
+  args: [publicModel, upstreamModel, strategyType, priority, configJson]
+});
 
 // eslint-disable-next-line no-console
 console.log("seeded route_item", { publicModel, upstreamModel, strategyType, priority, configJson });

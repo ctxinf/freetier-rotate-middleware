@@ -14,10 +14,10 @@ export type AppContext = {
 
 export async function createAppContext(config: AppConfig): Promise<AppContext> {
   const db = createGatewayDb(config.databasePath);
-  initSchema(db.raw);
+  await initSchema(db);
 
   if (config.routeItems && config.routeItems.length > 0) {
-    syncRouteItemsFromConfig(db, config.routeItems, config.routeItemsMode ?? "authoritative");
+    await syncRouteItemsFromConfig(db, config.routeItems, config.routeItemsMode ?? "authoritative");
   }
 
   return {

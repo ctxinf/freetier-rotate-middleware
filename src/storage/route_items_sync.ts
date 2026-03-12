@@ -15,11 +15,11 @@ function keyOf(item: Pick<RouteItemSeed, "publicModel" | "upstreamModel" | "stra
   return `${item.publicModel}::${item.upstreamModel}::${item.strategyType}::${item.priority}`;
 }
 
-export function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSeed[], mode: RouteItemsSyncMode): {
+export async function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSeed[], mode: RouteItemsSyncMode): Promise<{
   inserted: number;
   updated: number;
   deleted: number;
-} {
+}> {
   const desired = new Map<string, RouteItemSeed>();
   for (const it of items) {
     const k = keyOf(it);
@@ -29,39 +29,39 @@ export function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSeed[], 
     desired.set(k, it);
   }
 
-  const selectExistingId = db.raw.prepare(
-    "SELECT id FROM route_items WHERE public_model = ? AND upstream_model = ? AND strategy_type = ? AND priority = ? LIMIT 1"
-  );
-  const insertStmt = db.raw.prepare(
-    "INSERT INTO route_items(public_model, upstream_model, strategy_type, priority, config_json, enabled) VALUES(?, ?, ?, ?, ?, ?)"
-  );
-  const updateStmt = db.raw.prepare(
-    "UPDATE route_items SET config_json = ?, enabled = ? WHERE id = ?"
-  );
-
-  const allRowsStmt = db.raw.prepare(
-    "SELECT id, public_model, upstream_model, strategy_type, priority, enabled FROM route_items"
-  );
-  const deleteStmt = db.raw.prepare("DELETE FROM route_items WHERE id = ?");
-
-  const result = db.raw.transaction(() => {
+  const tx = await db.raw.transaction("write");
+  try {
     let inserted = 0;
     let updated = 0;
     let deleted = 0;
 
     for (const it of desired.values()) {
-      const existing = selectExistingId.get(it.publicModel, it.upstreamModel, it.strategyType, it.priority) as any;
+      const existingRes = await tx.execute({
+        sql: "SELECT id FROM route_items WHERE public_model = ? AND upstream_model = ? AND strategy_type = ? AND priority = ? LIMIT 1",
+        args: [it.publicModel, it.upstreamModel, it.strategyType, it.priority]
+      });
+      const existing = (existingRes.rows?.[0] as any) ?? null;
+
       if (existing?.id) {
-        updateStmt.run(it.configJson, it.enabled, existing.id);
+        await tx.execute({
+          sql: "UPDATE route_items SET config_json = ?, enabled = ? WHERE id = ?",
+          args: [it.configJson, it.enabled, existing.id]
+        });
         updated++;
       } else {
-        insertStmt.run(it.publicModel, it.upstreamModel, it.strategyType, it.priority, it.configJson, it.enabled);
+        await tx.execute({
+          sql: "INSERT INTO route_items(public_model, upstream_model, strategy_type, priority, config_json, enabled) VALUES(?, ?, ?, ?, ?, ?)",
+          args: [it.publicModel, it.upstreamModel, it.strategyType, it.priority, it.configJson, it.enabled]
+        });
         inserted++;
       }
     }
 
     if (mode === "authoritative") {
-      const rows = allRowsStmt.all() as any[];
+      const rowsRes = await tx.execute(
+        "SELECT id, public_model, upstream_model, strategy_type, priority, enabled FROM route_items"
+      );
+      const rows = (rowsRes.rows as any[]) ?? [];
       for (const r of rows) {
         const k = keyOf({
           publicModel: r.public_model,
@@ -70,14 +70,18 @@ export function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSeed[], 
           priority: r.priority
         });
         if (!desired.has(k)) {
-          deleteStmt.run(r.id);
+          await tx.execute({ sql: "DELETE FROM route_items WHERE id = ?", args: [r.id] });
           deleted++;
         }
       }
     }
 
+    await tx.commit();
     return { inserted, updated, deleted };
-  })();
-
-  return result;
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  } finally {
+    tx.close();
+  }
 }

@@ -65,54 +65,59 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
     .from(routeItemsTable)
     .orderBy(asc(routeItemsTable.publicModel), desc(routeItemsTable.priority), asc(routeItemsTable.id));
 
-  const getCounterStmt = app.db.raw.prepare(
-    "SELECT used_tokens, used_req, reserved_tokens, updated_at FROM quota_counters WHERE route_item_id = ? AND bucket_key = ?"
-  );
+  const getCounter = async (routeItemId: number, bucketKey: string): Promise<any | null> => {
+    const res = await app.db.raw.execute({
+      sql: "SELECT used_tokens, used_req, reserved_tokens, updated_at FROM quota_counters WHERE route_item_id = ? AND bucket_key = ?",
+      args: [routeItemId, bucketKey]
+    });
+    return (res?.rows?.[0] as any) ?? null;
+  };
 
-  const itemsWithUsage = routeItems.map((ri) => {
+  const itemsWithUsage: any[] = [];
+  for (const ri of routeItems as any[]) {
     const parsed = parseJsonSafe(ri.configJson);
 
     if (ri.strategyType === "req_min_day") {
       const minuteBucket = utcMinuteString(now);
       const dayBucket = utcDayString(now);
-      return {
+      itemsWithUsage.push({
         ...ri,
         parsedConfig: parsed,
         buckets: { minuteBucket, dayBucket },
         counters: {
-          minute: (getCounterStmt.get(ri.id, minuteBucket) as any) ?? null,
-          day: (getCounterStmt.get(ri.id, dayBucket) as any) ?? null
+          minute: await getCounter(ri.id, minuteBucket),
+          day: await getCounter(ri.id, dayBucket)
         }
-      };
+      });
+      continue;
     }
 
     if (ri.strategyType === "token_day") {
       const resetHourUtc = Number.isFinite(Number(parsed.resetHourUtc)) ? Number(parsed.resetHourUtc) : 0;
       const dayBucket = quotaDayBucket(now, resetHourUtc);
-      return {
+      itemsWithUsage.push({
         ...ri,
         parsedConfig: parsed,
         buckets: { dayBucket, resetHourUtc },
         counters: {
-          day: (getCounterStmt.get(ri.id, dayBucket) as any) ?? null
+          day: await getCounter(ri.id, dayBucket)
         }
-      };
+      });
+      continue;
     }
 
-    return { ...ri, parsedConfig: parsed, buckets: null, counters: null };
-  });
+    itemsWithUsage.push({ ...ri, parsedConfig: parsed, buckets: null, counters: null });
+  }
 
-  const recentCounters = app.db.raw
-    .prepare(
-      "SELECT route_item_id, bucket_key, used_tokens, used_req, reserved_tokens, updated_at FROM quota_counters ORDER BY updated_at DESC LIMIT 200"
-    )
-    .all();
+  const recentCountersRes = await app.db.raw.execute(
+    "SELECT route_item_id, bucket_key, used_tokens, used_req, reserved_tokens, updated_at FROM quota_counters ORDER BY updated_at DESC LIMIT 200"
+  );
+  const recentCounters = (recentCountersRes?.rows as any[]) ?? [];
 
-  const recentRequestLogs = app.db.raw
-    .prepare(
-      "SELECT request_id, route_item_id, status, prompt_tokens, completion_tokens, total_tokens, latency_ms, created_at FROM request_logs ORDER BY created_at DESC LIMIT 100"
-    )
-    .all();
+  const recentRequestLogsRes = await app.db.raw.execute(
+    "SELECT request_id, route_item_id, status, prompt_tokens, completion_tokens, total_tokens, latency_ms, created_at FROM request_logs ORDER BY created_at DESC LIMIT 100"
+  );
+  const recentRequestLogs = (recentRequestLogsRes?.rows as any[]) ?? [];
 
   return {
     now: now.toISOString(),

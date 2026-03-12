@@ -101,70 +101,78 @@ function estimateTokensFromBody(body: any): number {
 }
 
 export function createQuotaService(db: GatewayDb) {
-  function ensureCounterRow(routeItemId: number, bucketKey: string): void {
-    db.raw
-      .prepare(
-        "INSERT INTO quota_counters(route_item_id, bucket_key) VALUES(?, ?) ON CONFLICT(route_item_id, bucket_key) DO NOTHING"
-      )
-      .run(routeItemId, bucketKey);
+  async function ensureCounterRow(executor: { execute: (stmt: any) => Promise<any> }, routeItemId: number, bucketKey: string): Promise<void> {
+    await executor.execute({
+      sql: "INSERT INTO quota_counters(route_item_id, bucket_key) VALUES(?, ?) ON CONFLICT(route_item_id, bucket_key) DO NOTHING",
+      args: [routeItemId, bucketKey]
+    });
   }
 
-  function getCounter(routeItemId: number, bucketKey: string): { used_tokens: number; used_req: number; reserved_tokens: number } {
-    const row = db.raw
-      .prepare("SELECT used_tokens, used_req, reserved_tokens FROM quota_counters WHERE route_item_id = ? AND bucket_key = ?")
-      .get(routeItemId, bucketKey) as any;
-    if (!row) return { used_tokens: 0, used_req: 0, reserved_tokens: 0 };
-    return row;
+  async function consumeReqMinuteAndDay(routeItemId: number, minuteBucket: string, minuteLimit: number, dayBucket: string, dayLimit: number): Promise<boolean> {
+    const tx = await db.raw.transaction("write");
+    try {
+      await ensureCounterRow(tx, routeItemId, minuteBucket);
+      await ensureCounterRow(tx, routeItemId, dayBucket);
+
+      const minuteRes = await tx.execute({
+        sql: "UPDATE quota_counters SET used_req = used_req + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ? AND used_req + 1 <= ?",
+        args: [routeItemId, minuteBucket, minuteLimit]
+      });
+      if (Number(minuteRes?.rowsAffected ?? 0) !== 1) {
+        await tx.rollback();
+        return false;
+      }
+
+      const dayRes = await tx.execute({
+        sql: "UPDATE quota_counters SET used_req = used_req + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ? AND used_req + 1 <= ?",
+        args: [routeItemId, dayBucket, dayLimit]
+      });
+      if (Number(dayRes?.rowsAffected ?? 0) !== 1) {
+        await tx.rollback();
+        return false;
+      }
+
+      await tx.commit();
+      return true;
+    } finally {
+      tx.close();
+    }
   }
 
-  function consumeReqMinuteAndDay(routeItemId: number, minuteBucket: string, minuteLimit: number, dayBucket: string, dayLimit: number): boolean {
-    ensureCounterRow(routeItemId, minuteBucket);
-    ensureCounterRow(routeItemId, dayBucket);
-
-    const minuteCur = getCounter(routeItemId, minuteBucket);
-    const dayCur = getCounter(routeItemId, dayBucket);
-    if (minuteCur.used_req + 1 > minuteLimit) return false;
-    if (dayCur.used_req + 1 > dayLimit) return false;
-
-    const stmt = db.raw.prepare(
-      "UPDATE quota_counters SET used_req = used_req + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?"
-    );
-    stmt.run(routeItemId, minuteBucket);
-    stmt.run(routeItemId, dayBucket);
-    return true;
+  async function reserveTokens(routeItemId: number, dayBucket: string, reserve: number, dailyLimit: number): Promise<boolean> {
+    const tx = await db.raw.transaction("write");
+    try {
+      await ensureCounterRow(tx, routeItemId, dayBucket);
+      const res = await tx.execute({
+        sql: "UPDATE quota_counters SET reserved_tokens = reserved_tokens + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ? AND used_tokens + reserved_tokens + ? <= ?",
+        args: [reserve, routeItemId, dayBucket, reserve, dailyLimit]
+      });
+      const ok = Number(res?.rowsAffected ?? 0) === 1;
+      if (!ok) await tx.rollback();
+      else await tx.commit();
+      return ok;
+    } finally {
+      tx.close();
+    }
   }
 
-  function reserveTokens(routeItemId: number, dayBucket: string, reserve: number, dailyLimit: number): boolean {
-    ensureCounterRow(routeItemId, dayBucket);
-    const cur = getCounter(routeItemId, dayBucket);
-    if (cur.used_tokens + cur.reserved_tokens + reserve > dailyLimit) return false;
-    db.raw
-      .prepare(
-        "UPDATE quota_counters SET reserved_tokens = reserved_tokens + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?"
-      )
-      .run(reserve, routeItemId, dayBucket);
-    return true;
+  async function settleTokens(routeItemId: number, dayBucket: string, reserved: number, actual: number): Promise<void> {
+    await ensureCounterRow(db.raw, routeItemId, dayBucket);
+    await db.raw.execute({
+      sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, reserved_tokens = reserved_tokens - ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?",
+      args: [actual, reserved, routeItemId, dayBucket]
+    });
   }
 
-  function settleTokens(routeItemId: number, dayBucket: string, reserved: number, actual: number): void {
-    ensureCounterRow(routeItemId, dayBucket);
-    db.raw
-      .prepare(
-        "UPDATE quota_counters SET used_tokens = used_tokens + ?, reserved_tokens = reserved_tokens - ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?"
-      )
-      .run(actual, reserved, routeItemId, dayBucket);
+  async function chargeReservedAsUsed(routeItemId: number, dayBucket: string, reserved: number): Promise<void> {
+    await ensureCounterRow(db.raw, routeItemId, dayBucket);
+    await db.raw.execute({
+      sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, reserved_tokens = reserved_tokens - ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?",
+      args: [reserved, reserved, routeItemId, dayBucket]
+    });
   }
 
-  function chargeReservedAsUsed(routeItemId: number, dayBucket: string, reserved: number): void {
-    ensureCounterRow(routeItemId, dayBucket);
-    db.raw
-      .prepare(
-        "UPDATE quota_counters SET used_tokens = used_tokens + ?, reserved_tokens = reserved_tokens - ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?"
-      )
-      .run(reserved, reserved, routeItemId, dayBucket);
-  }
-
-  function acquire(routeItem: RouteItem, clientBody: any, now: Date = new Date()): AcquireHandle {
+  async function acquire(routeItem: RouteItem, clientBody: any, now: Date = new Date()): Promise<AcquireHandle> {
     if (routeItem.enabled !== 1) return { ok: false, reason: "disabled" };
 
     if (routeItem.strategyType === "req_min_day") {
@@ -177,10 +185,7 @@ export function createQuotaService(db: GatewayDb) {
       const minuteBucket = utcMinuteString(now);
       const dayBucket = utcDayString(now);
 
-      const ok = db.raw.transaction(() =>
-        consumeReqMinuteAndDay(routeItem.id, minuteBucket, cfg.reqPerMin, dayBucket, cfg.reqPerDay)
-      )();
-
+      const ok = await consumeReqMinuteAndDay(routeItem.id, minuteBucket, cfg.reqPerMin, dayBucket, cfg.reqPerDay);
       if (!ok) return { ok: false, reason: "req quota exceeded" };
       return { ok: true, routeItem };
     }
@@ -199,7 +204,7 @@ export function createQuotaService(db: GatewayDb) {
         cfg.reserveFloor ?? 64
       );
 
-      const ok = db.raw.transaction(() => reserveTokens(routeItem.id, dayBucket, reserve, cfg.dailyTokenLimit))();
+      const ok = await reserveTokens(routeItem.id, dayBucket, reserve, cfg.dailyTokenLimit);
       if (!ok) return { ok: false, reason: "token quota exceeded" };
 
       return {
@@ -217,14 +222,14 @@ export function createQuotaService(db: GatewayDb) {
     return { ok: false, reason: "unknown strategy" };
   }
 
-  function finalize(reservation: TokenReservation | undefined, usage: Usage | undefined): void {
+  async function finalize(reservation: TokenReservation | undefined, usage: Usage | undefined): Promise<void> {
     if (!reservation) return;
     const actual = usage?.total_tokens;
     if (typeof actual === "number" && Number.isFinite(actual) && actual >= 0) {
-      settleTokens(reservation.routeItemId, reservation.dayBucket, reservation.reservedTokens, actual);
+      await settleTokens(reservation.routeItemId, reservation.dayBucket, reservation.reservedTokens, actual);
       return;
     }
-    chargeReservedAsUsed(reservation.routeItemId, reservation.dayBucket, reservation.reservedTokens);
+    await chargeReservedAsUsed(reservation.routeItemId, reservation.dayBucket, reservation.reservedTokens);
   }
 
   return { acquire, finalize };

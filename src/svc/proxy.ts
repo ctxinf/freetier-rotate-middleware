@@ -1,4 +1,3 @@
-import { fetch, Headers } from "undici";
 import type { RouteItem } from "./router.js";
 import type { AppContext } from "./context.js";
 import { requestLogs } from "../storage/schema.js";
@@ -105,7 +104,7 @@ async function tryOneCandidate(
   candidate: RouteItem,
   stream: boolean
 ): Promise<Response | null> {
-  const acquired = p.app.quota.acquire(candidate, p.clientBody);
+  const acquired = await p.app.quota.acquire(candidate, p.clientBody);
   if (!acquired.ok) return null;
 
   const upstreamBody = { ...p.clientBody, model: candidate.upstreamModel };
@@ -121,7 +120,7 @@ async function tryOneCandidate(
       body: JSON.stringify(upstreamBody)
     });
   } catch (e) {
-    p.app.quota.finalize(acquired.reservation, undefined);
+    await p.app.quota.finalize(acquired.reservation, undefined);
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
@@ -135,7 +134,7 @@ async function tryOneCandidate(
 
   // Retry-able upstream errors: allow fallback to next candidate.
   if (!upstreamRes.ok && (upstreamRes.status === 429 || upstreamRes.status >= 500)) {
-    p.app.quota.finalize(acquired.reservation, undefined);
+    await p.app.quota.finalize(acquired.reservation, undefined);
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
@@ -155,14 +154,21 @@ async function tryOneCandidate(
       // ignore
     }
 
-    p.app.quota.finalize(acquired.reservation, usage);
-    await upsertRequestLog(p.app, {
+    await p.app.quota.finalize(acquired.reservation, usage);
+    const logRow: {
+      requestId: string;
+      routeItemId: number;
+      status: number;
+      latencyMs: number;
+      usage?: Usage;
+    } = {
       requestId: p.requestId,
       routeItemId: candidate.id,
       status: upstreamRes.status,
-      usage,
       latencyMs
-    });
+    };
+    if (usage) logRow.usage = usage;
+    await upsertRequestLog(p.app, logRow);
 
     return new Response(text, {
       status: upstreamRes.status,
@@ -171,7 +177,7 @@ async function tryOneCandidate(
   }
 
   if (!upstreamRes.body) {
-    p.app.quota.finalize(acquired.reservation, undefined);
+    await p.app.quota.finalize(acquired.reservation, undefined);
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
@@ -187,17 +193,24 @@ async function tryOneCandidate(
   const [clientStream, collectorStream] = upstreamRes.body.tee();
   collectUsageFromSse(collectorStream)
     .then(async (usage) => {
-      p.app.quota.finalize(acquired.reservation, usage);
-      await upsertRequestLog(p.app, {
+      await p.app.quota.finalize(acquired.reservation, usage);
+      const logRow: {
+        requestId: string;
+        routeItemId: number;
+        status: number;
+        latencyMs: number;
+        usage?: Usage;
+      } = {
         requestId: p.requestId,
         routeItemId: candidate.id,
         status: upstreamRes.status,
-        usage,
         latencyMs
-      });
+      };
+      if (usage) logRow.usage = usage;
+      await upsertRequestLog(p.app, logRow);
     })
     .catch(async () => {
-      p.app.quota.finalize(acquired.reservation, undefined);
+      await p.app.quota.finalize(acquired.reservation, undefined);
       await upsertRequestLog(p.app, {
         requestId: p.requestId,
         routeItemId: candidate.id,
