@@ -32,4 +32,4 @@ USER node
 # config.jsonc defaults to port=3000 (can be overridden by env PORT).
 EXPOSE 3000
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/src/server.js"]
