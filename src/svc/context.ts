@@ -1,6 +1,7 @@
 import type { AppConfig } from "../config.js";
 import { createGatewayDb } from "../storage/db.js";
 import { initSchema } from "../storage/init.js";
+import { syncRouteItemsFromConfig } from "../storage/route_items_sync.js";
 import { createRouter } from "./router.js";
 import { createQuotaService } from "./quota.js";
 
@@ -15,6 +16,10 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
   const db = createGatewayDb(config.databasePath);
   initSchema(db.raw);
 
+  if (config.routeItems && config.routeItems.length > 0) {
+    syncRouteItemsFromConfig(db, config.routeItems, config.routeItemsMode ?? "authoritative");
+  }
+
   return {
     config,
     db,
@@ -22,4 +27,3 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
     quota: createQuotaService(db)
   };
 }
-

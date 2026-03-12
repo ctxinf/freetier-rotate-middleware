@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import fs from "node:fs";
 
 dotenv.config();
 
@@ -7,23 +8,196 @@ export type AppConfig = {
   upstreamBaseUrl: string;
   upstreamApiKey?: string;
   databasePath: string;
+  routeItems?: RouteItemConfig[];
+  routeItemsMode?: RouteItemsMode;
 };
 
-function mustGetEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env ${name}`);
-  return v;
+export type RouteItemsMode = "authoritative" | "merge";
+
+export type RouteItemConfig = {
+  publicModel: string;
+  upstreamModel: string;
+  strategyType: "token_day" | "req_min_day";
+  priority: number;
+  enabled: number;
+  configJson: string;
+};
+
+function stripJsoncComments(source: string): string {
+  let out = "";
+  let inString = false;
+  let quote = '"';
+  let escaped = false;
+
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]!;
+
+    if (inString) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === quote) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quote = ch;
+      out += ch;
+      continue;
+    }
+
+    if (ch === "/" && i + 1 < source.length) {
+      const next = source[i + 1]!;
+      if (next === "/") {
+        i += 2;
+        while (i < source.length && source[i] !== "\n") i++;
+        out += "\n";
+        continue;
+      }
+      if (next === "*") {
+        i += 2;
+        while (i + 1 < source.length && !(source[i] === "*" && source[i + 1] === "/")) i++;
+        i += 1;
+        continue;
+      }
+    }
+
+    out += ch;
+  }
+
+  return out;
+}
+
+function stripTrailingCommas(source: string): string {
+  let out = "";
+  let inString = false;
+  let quote = '"';
+  let escaped = false;
+
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]!;
+
+    if (inString) {
+      out += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === quote) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      quote = ch;
+      out += ch;
+      continue;
+    }
+
+    if (ch === ",") {
+      let j = i + 1;
+      while (j < source.length && /\s/.test(source[j]!)) j++;
+      const next = source[j];
+      if (next === "}" || next === "]") {
+        continue;
+      }
+    }
+
+    out += ch;
+  }
+
+  return out;
+}
+
+function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(configPath, "utf8");
+  } catch (e: any) {
+    throw new Error(`Failed to read CONFIG_PATH file: ${configPath}: ${e?.message ?? String(e)}`);
+  }
+
+  let obj: any;
+  try {
+    const normalized = stripTrailingCommas(stripJsoncComments(raw.replace(/^\uFEFF/, "")));
+    obj = JSON.parse(normalized);
+  } catch (e: any) {
+    throw new Error(`Invalid JSON/JSONC in CONFIG_PATH file: ${configPath}: ${e?.message ?? String(e)}`);
+  }
+
+  const fileConfig: Partial<AppConfig> = {};
+  if (obj && typeof obj === "object") {
+    if (obj.port !== undefined) fileConfig.port = Number(obj.port);
+    if (typeof obj.upstreamBaseUrl === "string") fileConfig.upstreamBaseUrl = obj.upstreamBaseUrl;
+    if (typeof obj.upstreamApiKey === "string") fileConfig.upstreamApiKey = obj.upstreamApiKey;
+    if (typeof obj.databasePath === "string") fileConfig.databasePath = obj.databasePath;
+
+    const mode = obj.routeItemsMode;
+    if (mode === "authoritative" || mode === "merge") fileConfig.routeItemsMode = mode;
+
+    const routeItems = obj.routeItems;
+    if (Array.isArray(routeItems)) {
+      fileConfig.routeItems = routeItems.map((rawItem: any, idx: number) => {
+        const publicModel = rawItem?.publicModel ?? rawItem?.public_model;
+        const upstreamModel = rawItem?.upstreamModel ?? rawItem?.upstream_model;
+        const strategyType = rawItem?.strategyType ?? rawItem?.strategy_type;
+        const priorityRaw = rawItem?.priority ?? rawItem?.prio;
+        const enabledRaw = rawItem?.enabled;
+        const configJsonRaw = rawItem?.configJson ?? rawItem?.config_json ?? rawItem?.config;
+
+        if (typeof publicModel !== "string" || publicModel.length === 0) {
+          throw new Error(`routeItems[${idx}] missing publicModel`);
+        }
+        if (typeof upstreamModel !== "string" || upstreamModel.length === 0) {
+          throw new Error(`routeItems[${idx}] missing upstreamModel`);
+        }
+        if (strategyType !== "token_day" && strategyType !== "req_min_day") {
+          throw new Error(`routeItems[${idx}] invalid strategyType: ${String(strategyType)}`);
+        }
+
+        const priority = Number(priorityRaw ?? 0);
+        if (!Number.isFinite(priority)) throw new Error(`routeItems[${idx}] invalid priority`);
+
+        const enabled = enabledRaw === 0 || enabledRaw === "0" ? 0 : 1;
+
+        let configJson = "{}";
+        if (typeof configJsonRaw === "string") {
+          configJson = configJsonRaw;
+        } else if (configJsonRaw !== undefined) {
+          configJson = JSON.stringify(configJsonRaw);
+        }
+
+        return { publicModel, upstreamModel, strategyType, priority, enabled, configJson };
+      });
+    }
+  }
+
+  return fileConfig;
 }
 
 export function loadConfig(): AppConfig {
-  const port = Number(process.env.PORT ?? "8787");
+  const configPath = process.env.CONFIG_PATH;
+  const fileConfig = configPath ? loadJsonFileConfig(configPath) : {};
+
+  const port = Number(process.env.PORT ?? fileConfig.port ?? "8787");
   if (!Number.isFinite(port) || port <= 0) throw new Error("Invalid PORT");
 
-  return {
-    port,
-    upstreamBaseUrl: mustGetEnv("UPSTREAM_BASE_URL"),
-    upstreamApiKey: process.env.UPSTREAM_API_KEY,
-    databasePath: process.env.DATABASE_PATH ?? "./data/gateway.sqlite"
-  };
-}
+  const upstreamBaseUrl = process.env.UPSTREAM_BASE_URL ?? fileConfig.upstreamBaseUrl;
+  if (!upstreamBaseUrl) throw new Error("Missing UPSTREAM_BASE_URL (or set it in CONFIG_PATH JSON)");
 
+  const databasePath = process.env.DATABASE_PATH ?? fileConfig.databasePath ?? "./data/gateway.sqlite";
+
+  const upstreamApiKey = process.env.UPSTREAM_API_KEY ?? fileConfig.upstreamApiKey;
+  const cfg: AppConfig = { port, upstreamBaseUrl, databasePath };
+  if (upstreamApiKey) cfg.upstreamApiKey = upstreamApiKey;
+  if (fileConfig.routeItems && fileConfig.routeItems.length > 0) cfg.routeItems = fileConfig.routeItems;
+  if (fileConfig.routeItemsMode) cfg.routeItemsMode = fileConfig.routeItemsMode;
+  return cfg;
+}
