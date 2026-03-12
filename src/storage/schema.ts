@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const routeItems = sqliteTable("route_items", {
@@ -19,5 +20,6 @@ export const requestLogs = sqliteTable("request_logs", {
   totalTokens: integer("total_tokens"),
   latencyMs: integer("latency_ms"),
   createdAt: text("created_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`)
 });
-

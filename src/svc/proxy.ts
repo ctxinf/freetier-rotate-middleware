@@ -59,28 +59,47 @@ async function upsertRequestLog(app: AppContext, row: {
   usage?: Usage;
   latencyMs?: number;
 }): Promise<void> {
-  await app.db.orm
-    .insert(requestLogs)
-    .values({
-      requestId: row.requestId,
-      routeItemId: row.routeItemId,
-      status: row.status,
-      promptTokens: row.usage?.prompt_tokens,
-      completionTokens: row.usage?.completion_tokens,
-      totalTokens: row.usage?.total_tokens,
-      latencyMs: row.latencyMs
-    })
-    .onConflictDoUpdate({
-      target: requestLogs.requestId,
-      set: {
-        routeItemId: row.routeItemId,
-        status: row.status,
-        promptTokens: row.usage?.prompt_tokens,
-        completionTokens: row.usage?.completion_tokens,
-        totalTokens: row.usage?.total_tokens,
-        latencyMs: row.latencyMs
-      }
-    });
+  const createdAt = new Date().toISOString();
+
+  const insertValues: Record<string, unknown> = { requestId: row.requestId, createdAt };
+  const updateSet: Record<string, unknown> = {};
+
+  if (row.routeItemId !== undefined) {
+    insertValues.routeItemId = row.routeItemId;
+    updateSet.routeItemId = row.routeItemId;
+  }
+  if (row.status !== undefined) {
+    insertValues.status = row.status;
+    updateSet.status = row.status;
+  }
+  if (row.latencyMs !== undefined) {
+    insertValues.latencyMs = row.latencyMs;
+    updateSet.latencyMs = row.latencyMs;
+  }
+
+  if (row.usage?.prompt_tokens !== undefined) {
+    insertValues.promptTokens = row.usage.prompt_tokens;
+    updateSet.promptTokens = row.usage.prompt_tokens;
+  }
+  if (row.usage?.completion_tokens !== undefined) {
+    insertValues.completionTokens = row.usage.completion_tokens;
+    updateSet.completionTokens = row.usage.completion_tokens;
+  }
+  if (row.usage?.total_tokens !== undefined) {
+    insertValues.totalTokens = row.usage.total_tokens;
+    updateSet.totalTokens = row.usage.total_tokens;
+  }
+
+  const q = app.db.orm.insert(requestLogs).values(insertValues as any);
+  if (Object.keys(updateSet).length === 0) {
+    await q.onConflictDoNothing();
+    return;
+  }
+
+  await q.onConflictDoUpdate({
+    target: requestLogs.requestId,
+    set: updateSet as any
+  });
 }
 
 async function tryOneCandidate(
@@ -235,4 +254,3 @@ export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
     headers: { "content-type": "application/json" }
   });
 }
-
