@@ -6,7 +6,6 @@ dotenv.config();
 export type AppConfig = {
   port: number;
   upstreamBaseUrl: string;
-  upstreamApiKey?: string;
   databasePath: string;
   routeItems?: RouteItemConfig[];
   routeItemsMode?: RouteItemsMode;
@@ -22,6 +21,35 @@ export type RouteItemConfig = {
   enabled: number;
   configJson: string;
 };
+
+function normalizeTokenDayConfigToTokens(input: any): any {
+  if (!input || typeof input !== "object") return input;
+  const obj: any = { ...input };
+
+  let dailyTokenLimitTokens: number | undefined;
+
+  if (obj.dailyTokenLimitTokens !== undefined) {
+    dailyTokenLimitTokens = Number(obj.dailyTokenLimitTokens);
+  } else if (obj.dailyTokenLimitM !== undefined) {
+    dailyTokenLimitTokens = Number(obj.dailyTokenLimitM) * 1_000_000;
+  } else if (typeof obj.dailyTokenLimit === "string") {
+    const s = obj.dailyTokenLimit.trim();
+    const m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*([mM])$/);
+    if (m) dailyTokenLimitTokens = Number(m[1]) * 1_000_000;
+    else dailyTokenLimitTokens = Number(s);
+  } else if (obj.dailyTokenLimit !== undefined) {
+    const raw = Number(obj.dailyTokenLimit);
+    dailyTokenLimitTokens = raw >= 1_000_000 ? raw : raw * 1_000_000;
+  }
+
+  if (dailyTokenLimitTokens !== undefined && Number.isFinite(dailyTokenLimitTokens)) {
+    obj.dailyTokenLimit = dailyTokenLimitTokens;
+    delete obj.dailyTokenLimitM;
+    delete obj.dailyTokenLimitTokens;
+  }
+
+  return obj;
+}
 
 function stripJsoncComments(source: string): string {
   let out = "";
@@ -136,7 +164,6 @@ function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
   if (obj && typeof obj === "object") {
     if (obj.port !== undefined) fileConfig.port = Number(obj.port);
     if (typeof obj.upstreamBaseUrl === "string") fileConfig.upstreamBaseUrl = obj.upstreamBaseUrl;
-    if (typeof obj.upstreamApiKey === "string") fileConfig.upstreamApiKey = obj.upstreamApiKey;
     if (typeof obj.databasePath === "string") fileConfig.databasePath = obj.databasePath;
 
     const mode = obj.routeItemsMode;
@@ -165,13 +192,17 @@ function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
         const priority = Number(priorityRaw ?? 0);
         if (!Number.isFinite(priority)) throw new Error(`routeItems[${idx}] invalid priority`);
 
-        const enabled = enabledRaw === 0 || enabledRaw === "0" ? 0 : 1;
+      const enabled = enabledRaw === 0 || enabledRaw === "0" ? 0 : 1;
 
         let configJson = "{}";
         if (typeof configJsonRaw === "string") {
           configJson = configJsonRaw;
         } else if (configJsonRaw !== undefined) {
-          configJson = JSON.stringify(configJsonRaw);
+          const normalized =
+            strategyType === "token_day"
+              ? normalizeTokenDayConfigToTokens(configJsonRaw)
+              : configJsonRaw;
+          configJson = JSON.stringify(normalized);
         }
 
         return { publicModel, upstreamModel, strategyType, priority, enabled, configJson };
@@ -194,9 +225,7 @@ export function loadConfig(): AppConfig {
 
   const databasePath = process.env.DATABASE_PATH ?? fileConfig.databasePath ?? "./data/gateway.sqlite";
 
-  const upstreamApiKey = process.env.UPSTREAM_API_KEY ?? fileConfig.upstreamApiKey;
   const cfg: AppConfig = { port, upstreamBaseUrl, databasePath };
-  if (upstreamApiKey) cfg.upstreamApiKey = upstreamApiKey;
   if (fileConfig.routeItems && fileConfig.routeItems.length > 0) cfg.routeItems = fileConfig.routeItems;
   if (fileConfig.routeItemsMode) cfg.routeItemsMode = fileConfig.routeItemsMode;
   return cfg;

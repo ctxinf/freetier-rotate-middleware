@@ -119,7 +119,6 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
     config: {
       port: config.port,
       upstreamBaseUrl: config.upstreamBaseUrl,
-      upstreamApiKey: config.upstreamApiKey ? "[set]" : "[not set]",
       databasePath: config.databasePath
     },
     routeItems: itemsWithUsage,
@@ -198,7 +197,6 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     <ul>
       <li>port: ${escapeHtml(String(payload.config.port))}</li>
       <li>upstreamBaseUrl: ${escapeHtml(payload.config.upstreamBaseUrl)}</li>
-      <li>upstreamApiKey: ${escapeHtml(payload.config.upstreamApiKey)}</li>
       <li>databasePath: ${escapeHtml(payload.config.databasePath)}</li>
     </ul>
 

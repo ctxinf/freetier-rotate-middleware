@@ -39,9 +39,25 @@ function parseConfig(strategyType: StrategyType, configJson: string): TokenDayCo
   }
 
   if (strategyType === "token_day") {
-    const dailyTokenLimit = Number(obj.dailyTokenLimit);
+    let dailyTokenLimit: number = NaN;
+
+    if (obj.dailyTokenLimitTokens !== undefined) {
+      dailyTokenLimit = Number(obj.dailyTokenLimitTokens);
+    } else if (obj.dailyTokenLimitM !== undefined) {
+      dailyTokenLimit = Number(obj.dailyTokenLimitM) * 1_000_000;
+    } else if (typeof obj.dailyTokenLimit === "string") {
+      const s = obj.dailyTokenLimit.trim();
+      const m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*([mM])$/);
+      if (m) dailyTokenLimit = Number(m[1]) * 1_000_000;
+      else dailyTokenLimit = Number(s);
+    } else {
+      const raw = Number(obj.dailyTokenLimit);
+      // Prefer M (millions) for config ergonomics; keep backward-compat for large token counts.
+      dailyTokenLimit = raw >= 1_000_000 ? raw : raw * 1_000_000;
+    }
+
     if (!Number.isFinite(dailyTokenLimit) || dailyTokenLimit <= 0) {
-      throw new Error("token_day missing dailyTokenLimit");
+      throw new Error("token_day missing dailyTokenLimit (supports dailyTokenLimitM / dailyTokenLimitTokens / '2M')");
     }
     return {
       dailyTokenLimit,

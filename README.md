@@ -3,7 +3,7 @@
 OpenAI Chat Completions compatible gateway with custom routing + quota strategies.
 
 ## Setup
-1. Copy `.env.example` to `.env` and set `UPSTREAM_BASE_URL` (and optionally `UPSTREAM_API_KEY`).
+1. Copy `.env.example` to `.env` and set `UPSTREAM_BASE_URL`.
 2. Install deps and run dev server:
    - `npm i`
    - `npm run dev`
@@ -21,5 +21,6 @@ npm run db:seed -- doubao-seed-xxx doubao-seed-xxx token_day 100 '{"dailyTokenLi
 
 ## API
 - `POST /v1/chat/completions` proxies to upstream `/v1/chat/completions`
+- `GET /v1/models` lists enabled models (OpenAI-compatible)
 - `GET /_health`
-
+- `GET /_status` and `GET /_status/json`

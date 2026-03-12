@@ -33,9 +33,7 @@ function buildUpstreamHeaders(app: AppContext, clientReq: Request, requestId: st
   const project = clientReq.headers.get("openai-project");
   if (project) h.set("openai-project", project);
 
-  const auth = app.config.upstreamApiKey
-    ? `Bearer ${app.config.upstreamApiKey}`
-    : clientReq.headers.get("authorization");
+  const auth = clientReq.headers.get("authorization");
   if (auth) h.set("authorization", auth);
 
   return h;

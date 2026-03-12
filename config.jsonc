@@ -5,8 +5,7 @@
   // Upstream OpenAI-compatible base URL (can still be overridden by env UPSTREAM_BASE_URL)
   "upstreamBaseUrl": "http://localhost:8080",
 
-  // Optional. If not set here, will use env UPSTREAM_API_KEY if present.
-  // "upstreamApiKey": "",
+  // Authorization header will be transparently forwarded to upstream.
 
   // SQLite path (can still be overridden by env DATABASE_PATH)
   "databasePath": "./data/gateway.sqlite",
@@ -19,51 +18,12 @@
   "routeItems": [
     {
       "publicModel": "my-api:free",
-      "upstreamModel": "glm-4-7-251222",
-      "strategyType": "token_day",
-      "priority": 100,
-      "enabled": 1,
-      "config": {
-        "dailyTokenLimit": 0,
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
-      }
-    },
-    {
-      "publicModel": "my-api:free",
-      "upstreamModel": "doubao-seed-code-preview-251028",
-      "strategyType": "token_day",
-      "priority": 100,
-      "enabled": 1,
-      "config": {
-        "dailyTokenLimit": 0,
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
-      }
-    },
-    {
-      "publicModel": "my-api:free",
       "upstreamModel": "doubao-seed-2-0-pro-260215",
       "strategyType": "token_day",
       "priority": 100,
       "enabled": 1,
       "config": {
-        "dailyTokenLimit": 5000000,
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
-      }
-    },
-    {
-      "publicModel": "my-api:free",
-      "upstreamModel": "doubao-seed-2-0-lite-260215",
-      "strategyType": "token_day",
-      "priority": 100,
-      "enabled": 1,
-      "config": {
-        "dailyTokenLimit": 2000000,
+        "dailyTokenLimit": "2M",
         "resetHourUtc": 8,
         "reserveMultiplier": 1.2,
         "reserveFloor": 64
@@ -73,10 +33,10 @@
       "publicModel": "my-api:free",
       "upstreamModel": "doubao-seed-2-0-code-preview-260215",
       "strategyType": "token_day",
-      "priority": 100,
+      "priority": 95,
       "enabled": 1,
       "config": {
-        "dailyTokenLimit": 2000000,
+        "dailyTokenLimit": "2M",
         "resetHourUtc": 8,
         "reserveMultiplier": 1.2,
         "reserveFloor": 64
@@ -84,12 +44,54 @@
     },
     {
       "publicModel": "my-api:free",
-      "upstreamModel": "doubao-seed-2-0-mini-260215",
+      "upstreamModel": "doubao-seed-code-preview-251028",
       "strategyType": "token_day",
-      "priority": 100,
+      "priority": 90,
       "enabled": 1,
       "config": {
-        "dailyTokenLimit": 2000000,
+        "dailyTokenLimit": "5M",
+        "resetHourUtc": 8,
+        "reserveMultiplier": 1.2,
+        "reserveFloor": 64
+      }
+    },
+    {
+      "publicModel": "my-api:free",
+      "upstreamModel": "glm-4-7-251222",
+      "strategyType": "token_day",
+      "priority": 85,
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
+        "resetHourUtc": 8,
+        "reserveMultiplier": 1.2,
+        "reserveFloor": 64
+      }
+    },
+    
+    
+    {
+      "publicModel": "my-api:free",
+      "upstreamModel": "doubao-seed-2-0-lite-260215",
+      "strategyType": "token_day",
+      "priority": 80,
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
+        "resetHourUtc": 8,
+        "reserveMultiplier": 1.2,
+        "reserveFloor": 64
+      }
+    },
+    
+    {
+      "publicModel": "my-api:free",
+      "upstreamModel": "doubao-seed-2-0-mini-260215",
+      "strategyType": "token_day",
+      "priority": 75,
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
         "resetHourUtc": 8,
         "reserveMultiplier": 1.2,
         "reserveFloor": 64
@@ -99,10 +101,10 @@
       "publicModel": "my-api:free",
       "upstreamModel": "doubao-seed-1-8-251228",
       "strategyType": "token_day",
-      "priority": 100,
+      "priority": 60,
       "enabled": 1,
       "config": {
-        "dailyTokenLimit": 1000000,
+        "dailyTokenLimit": "1M",
         "resetHourUtc": 8,
         "reserveMultiplier": 1.2,
         "reserveFloor": 64
