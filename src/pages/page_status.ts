@@ -60,21 +60,21 @@ function renderTable(headers: string[], rows: Array<Array<string | number | null
 }
 
 async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date) {
-  const routeItems = await app.db.orm
+  const routes = await app.db.orm
     .select()
     .from(routeItemsTable)
-    .orderBy(asc(routeItemsTable.publicModel), desc(routeItemsTable.priority), asc(routeItemsTable.id));
+    .orderBy(asc(routeItemsTable.entryModel), desc(routeItemsTable.priority), asc(routeItemsTable.id));
 
   const getCounter = async (routeItemId: number, bucketKey: string): Promise<any | null> => {
     const res = await app.db.raw.execute({
-      sql: "SELECT used_tokens, used_req, reserved_tokens, updated_at FROM quota_counters WHERE route_item_id = ? AND bucket_key = ?",
+      sql: "SELECT used_tokens, used_req, updated_at FROM quota_counters WHERE route_item_id = ? AND bucket_key = ?",
       args: [routeItemId, bucketKey]
     });
     return (res?.rows?.[0] as any) ?? null;
   };
 
   const itemsWithUsage: any[] = [];
-  for (const ri of routeItems as any[]) {
+  for (const ri of routes as any[]) {
     const parsed = parseJsonSafe(ri.configJson);
 
     if (ri.strategyType === "req_min_day") {
@@ -110,7 +110,7 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
   }
 
   const recentCountersRes = await app.db.raw.execute(
-    "SELECT route_item_id, bucket_key, used_tokens, used_req, reserved_tokens, updated_at FROM quota_counters ORDER BY updated_at DESC LIMIT 200"
+    "SELECT route_item_id, bucket_key, used_tokens, used_req, updated_at FROM quota_counters ORDER BY updated_at DESC LIMIT 200"
   );
   const recentCounters = (recentCountersRes?.rows as any[]) ?? [];
 
@@ -126,7 +126,7 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
       upstreamBaseUrl: config.upstreamBaseUrl,
       databasePath: config.databasePath
     },
-    routeItems: itemsWithUsage,
+    routes: itemsWithUsage,
     quotaCountersRecent: recentCounters,
     requestLogsRecent: recentRequestLogs
   };
@@ -144,7 +144,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     const payload = await buildStatusPayload(ctx, config, now);
     c.header("cache-control", "no-store");
 
-    const routeRows: Array<Array<string | number | null | undefined>> = payload.routeItems.map((ri: any) => {
+    const routeRows: Array<Array<string | number | null | undefined>> = payload.routes.map((ri: any) => {
       const enabled = ri.enabled === 1 ? "1" : "0";
       let bucket = "-";
       let usage = "-";
@@ -159,10 +159,10 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
         const day = ri.counters?.day;
         const cfg = ri.parsedConfig ?? {};
         bucket = `${ri.buckets.dayBucket} (reset@${ri.buckets.resetHourUtc}hZ)`;
-        usage = `tok: used ${formatTokensM(day?.used_tokens ?? 0)}, res ${formatTokensM(day?.reserved_tokens ?? 0)}, limit ${formatTokensM(cfg.dailyTokenLimit)}`;
+        usage = `tok: used ${formatTokensM(day?.used_tokens ?? 0)}, limit ${formatTokensM(cfg.dailyTokenLimit)}`;
       }
 
-      return [ri.id, enabled, ri.publicModel, ri.upstreamModel, ri.strategyType, ri.priority, bucket, usage];
+      return [ri.id, enabled, ri.entryModel, ri.upstreamModel, ri.strategyType, ri.priority, bucket, usage];
     });
 
     const reqRows: Array<Array<string | number | null | undefined>> = (payload.requestLogsRecent as any[])
@@ -207,7 +207,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
 
     <h2>route_items</h2>
     ${renderTable(
-      ["id", "en", "public_model", "upstream_model", "strategy", "prio", "bucket", "usage"],
+      ["id", "en", "entry_model", "upstream_model", "strategy", "prio", "bucket", "usage"],
       routeRows
     )}
 

@@ -1,7 +1,7 @@
 import type { GatewayDb } from "./db.js";
 
 export type RouteItemSeed = {
-  publicModel: string;
+  entryModel: string;
   upstreamModel: string;
   strategyType: "token_day" | "req_min_day";
   priority: number;
@@ -9,13 +9,13 @@ export type RouteItemSeed = {
   enabled: number;
 };
 
-export type RouteItemsSyncMode = "authoritative" | "merge";
+export type ConfigLoadMode = "authoritative" | "merge";
 
-function keyOf(item: Pick<RouteItemSeed, "publicModel" | "upstreamModel" | "strategyType" | "priority">): string {
-  return `${item.publicModel}::${item.upstreamModel}::${item.strategyType}::${item.priority}`;
+function keyOf(item: Pick<RouteItemSeed, "entryModel" | "upstreamModel" | "strategyType" | "priority">): string {
+  return `${item.entryModel}::${item.upstreamModel}::${item.strategyType}::${item.priority}`;
 }
 
-export async function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSeed[], mode: RouteItemsSyncMode): Promise<{
+export async function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSeed[], mode: ConfigLoadMode): Promise<{
   inserted: number;
   updated: number;
   deleted: number;
@@ -38,7 +38,7 @@ export async function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSe
     for (const it of desired.values()) {
       const existingRes = await tx.execute({
         sql: "SELECT id FROM route_items WHERE public_model = ? AND upstream_model = ? AND strategy_type = ? AND priority = ? LIMIT 1",
-        args: [it.publicModel, it.upstreamModel, it.strategyType, it.priority]
+        args: [it.entryModel, it.upstreamModel, it.strategyType, it.priority]
       });
       const existing = (existingRes.rows?.[0] as any) ?? null;
 
@@ -51,7 +51,7 @@ export async function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSe
       } else {
         await tx.execute({
           sql: "INSERT INTO route_items(public_model, upstream_model, strategy_type, priority, config_json, enabled) VALUES(?, ?, ?, ?, ?, ?)",
-          args: [it.publicModel, it.upstreamModel, it.strategyType, it.priority, it.configJson, it.enabled]
+          args: [it.entryModel, it.upstreamModel, it.strategyType, it.priority, it.configJson, it.enabled]
         });
         inserted++;
       }
@@ -64,7 +64,7 @@ export async function syncRouteItemsFromConfig(db: GatewayDb, items: RouteItemSe
       const rows = (rowsRes.rows as any[]) ?? [];
       for (const r of rows) {
         const k = keyOf({
-          publicModel: r.public_model,
+          entryModel: r.public_model,
           upstreamModel: r.upstream_model,
           strategyType: r.strategy_type,
           priority: r.priority

@@ -22,7 +22,6 @@ export async function initSchema(db: GatewayDb): Promise<void> {
         bucket_key TEXT NOT NULL,
         used_tokens INTEGER NOT NULL DEFAULT 0,
         used_req INTEGER NOT NULL DEFAULT 0,
-        reserved_tokens INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         UNIQUE(route_item_id, bucket_key)
       )`,

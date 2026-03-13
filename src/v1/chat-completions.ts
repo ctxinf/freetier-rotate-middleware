@@ -16,8 +16,8 @@ export async function chatCompletionsHandler(
     return c.json({ error: { message: "Invalid JSON body" } }, 400);
   }
 
-  const publicModel = body?.model;
-  if (typeof publicModel !== "string" || !publicModel) {
+  const entryModel = body?.model;
+  if (typeof entryModel !== "string" || !entryModel) {
     return c.json({ error: { message: "Missing body.model" } }, 400);
   }
 
@@ -26,7 +26,6 @@ export async function chatCompletionsHandler(
     requestId,
     clientReq: c.req.raw,
     clientBody: body,
-    publicModel
+    entryModel
   });
 }
-

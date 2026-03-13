@@ -10,104 +10,90 @@
   // SQLite path (can still be overridden by env DATABASE_PATH)
   "databasePath": "./data/gateway.sqlite",
 
-  // How to sync routeItems into sqlite on startup:
-  // - authoritative: insert/update items from config, and set enabled=0 for DB rows not present here
+  // How to sync routes into sqlite on startup:
+  // - authoritative: insert/update items from config, and delete DB rows not present here
   // - merge: insert/update items from config, do not touch other DB rows
-  "routeItemsMode": "authoritative",
+  "configLoadMode": "authoritative",
 
-  "routeItems": [
+  "routes": [
     {
-      "publicModel": "my-api:free",
+      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-2-0-pro-260215",
       "strategyType": "token_day",
       "priority": 100,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
+        "resetHourUtc": 8
       }
     },
     {
-      "publicModel": "my-api:free",
+      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-2-0-code-preview-260215",
       "strategyType": "token_day",
       "priority": 95,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
+        "resetHourUtc": 8
       }
     },
     {
-      "publicModel": "my-api:free",
+      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-code-preview-251028",
       "strategyType": "token_day",
       "priority": 90,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "5M",
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
+        "resetHourUtc": 8
       }
     },
     {
-      "publicModel": "my-api:free",
+      "entryModel": "my-api:free",
       "upstreamModel": "glm-4-7-251222",
       "strategyType": "token_day",
       "priority": 85,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
+        "resetHourUtc": 8
       }
     },
     
     
     {
-      "publicModel": "my-api:free",
+      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-2-0-lite-260215",
       "strategyType": "token_day",
       "priority": 80,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
+        "resetHourUtc": 8
       }
     },
     
     {
-      "publicModel": "my-api:free",
+      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-2-0-mini-260215",
       "strategyType": "token_day",
       "priority": 75,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
+        "resetHourUtc": 8
       }
     },
     {
-      "publicModel": "my-api:free",
+      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-1-8-251228",
       "strategyType": "token_day",
       "priority": 60,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "1M",
-        "resetHourUtc": 8,
-        "reserveMultiplier": 1.2,
-        "reserveFloor": 64
+        "resetHourUtc": 8
       }
     }
   ]

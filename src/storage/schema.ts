@@ -3,7 +3,7 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const routeItems = sqliteTable("route_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  publicModel: text("public_model").notNull(),
+  entryModel: text("public_model").notNull(),
   upstreamModel: text("upstream_model").notNull(),
   strategyType: text("strategy_type").notNull(),
   priority: integer("priority").notNull().default(0),

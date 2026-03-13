@@ -4,8 +4,6 @@ import type { RouteItem, StrategyType } from "./router.js";
 type TokenDayConfig = {
   dailyTokenLimit: number;
   resetHourUtc?: number;
-  reserveMultiplier?: number;
-  reserveFloor?: number;
 };
 
 type ReqMinDayConfig = {
@@ -19,15 +17,10 @@ export type Usage = {
   total_tokens?: number;
 };
 
-type TokenReservation = {
-  routeItemId: number;
-  dayBucket: string;
-  reservedTokens: number;
-  dailyLimit: number;
-};
+type TokenDayCharge = { routeItemId: number; dayBucket: string };
 
 export type AcquireHandle =
-  | { ok: true; routeItem: RouteItem; reservation?: TokenReservation }
+  | { ok: true; routeItem: RouteItem; tokenDayCharge?: TokenDayCharge }
   | { ok: false; reason: string };
 
 function parseConfig(strategyType: StrategyType, configJson: string): TokenDayConfig | ReqMinDayConfig {
@@ -61,9 +54,7 @@ function parseConfig(strategyType: StrategyType, configJson: string): TokenDayCo
     }
     return {
       dailyTokenLimit,
-      resetHourUtc: Number.isFinite(Number(obj.resetHourUtc)) ? Number(obj.resetHourUtc) : 0,
-      reserveMultiplier: Number.isFinite(Number(obj.reserveMultiplier)) ? Number(obj.reserveMultiplier) : 1.2,
-      reserveFloor: Number.isFinite(Number(obj.reserveFloor)) ? Number(obj.reserveFloor) : 64
+      resetHourUtc: Number.isFinite(Number(obj.resetHourUtc)) ? Number(obj.resetHourUtc) : 0
     };
   }
 
@@ -92,12 +83,6 @@ function quotaDayBucket(now: Date, resetHourUtc: number): string {
   const bucketDate = new Date(now);
   if (hour < resetHourUtc) bucketDate.setUTCDate(bucketDate.getUTCDate() - 1);
   return utcDayString(bucketDate);
-}
-
-function estimateTokensFromBody(body: any): number {
-  // Tokenizers are model-specific; use a conservative heuristic for reservation.
-  const s = JSON.stringify(body ?? "");
-  return Math.ceil(s.length / 4);
 }
 
 export function createQuotaService(db: GatewayDb) {
@@ -139,36 +124,28 @@ export function createQuotaService(db: GatewayDb) {
     }
   }
 
-  async function reserveTokens(routeItemId: number, dayBucket: string, reserve: number, dailyLimit: number): Promise<boolean> {
+  async function canStartTokenDay(routeItemId: number, dayBucket: string, dailyLimit: number): Promise<boolean> {
     const tx = await db.raw.transaction("write");
     try {
       await ensureCounterRow(tx, routeItemId, dayBucket);
       const res = await tx.execute({
-        sql: "UPDATE quota_counters SET reserved_tokens = reserved_tokens + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ? AND used_tokens + reserved_tokens + ? <= ?",
-        args: [reserve, routeItemId, dayBucket, reserve, dailyLimit]
+        sql: "SELECT used_tokens FROM quota_counters WHERE route_item_id = ? AND bucket_key = ? LIMIT 1",
+        args: [routeItemId, dayBucket]
       });
-      const ok = Number(res?.rowsAffected ?? 0) === 1;
-      if (!ok) await tx.rollback();
-      else await tx.commit();
+      const used = Number((res?.rows?.[0] as any)?.used_tokens ?? 0);
+      const ok = Number.isFinite(used) ? used < dailyLimit : true;
+      await tx.commit();
       return ok;
     } finally {
       tx.close();
     }
   }
 
-  async function settleTokens(routeItemId: number, dayBucket: string, reserved: number, actual: number): Promise<void> {
+  async function chargeTokens(routeItemId: number, dayBucket: string, actual: number): Promise<void> {
     await ensureCounterRow(db.raw, routeItemId, dayBucket);
     await db.raw.execute({
-      sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, reserved_tokens = reserved_tokens - ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?",
-      args: [actual, reserved, routeItemId, dayBucket]
-    });
-  }
-
-  async function chargeReservedAsUsed(routeItemId: number, dayBucket: string, reserved: number): Promise<void> {
-    await ensureCounterRow(db.raw, routeItemId, dayBucket);
-    await db.raw.execute({
-      sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, reserved_tokens = reserved_tokens - ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?",
-      args: [reserved, reserved, routeItemId, dayBucket]
+      sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?",
+      args: [actual, routeItemId, dayBucket]
     });
   }
 
@@ -198,38 +175,25 @@ export function createQuotaService(db: GatewayDb) {
         return { ok: false, reason: "invalid config" };
       }
       const dayBucket = quotaDayBucket(now, cfg.resetHourUtc ?? 0);
-      const estimate = estimateTokensFromBody(clientBody);
-      const reserve = Math.max(
-        Math.ceil(estimate * (cfg.reserveMultiplier ?? 1.2)),
-        cfg.reserveFloor ?? 64
-      );
-
-      const ok = await reserveTokens(routeItem.id, dayBucket, reserve, cfg.dailyTokenLimit);
+      const ok = await canStartTokenDay(routeItem.id, dayBucket, cfg.dailyTokenLimit);
       if (!ok) return { ok: false, reason: "token quota exceeded" };
 
       return {
         ok: true,
         routeItem,
-        reservation: {
-          routeItemId: routeItem.id,
-          dayBucket,
-          reservedTokens: reserve,
-          dailyLimit: cfg.dailyTokenLimit
-        }
+        tokenDayCharge: { routeItemId: routeItem.id, dayBucket }
       };
     }
 
     return { ok: false, reason: "unknown strategy" };
   }
 
-  async function finalize(reservation: TokenReservation | undefined, usage: Usage | undefined): Promise<void> {
-    if (!reservation) return;
+  async function finalize(charge: TokenDayCharge | undefined, usage: Usage | undefined): Promise<void> {
+    if (!charge) return;
     const actual = usage?.total_tokens;
     if (typeof actual === "number" && Number.isFinite(actual) && actual >= 0) {
-      await settleTokens(reservation.routeItemId, reservation.dayBucket, reservation.reservedTokens, actual);
-      return;
+      await chargeTokens(charge.routeItemId, charge.dayBucket, actual);
     }
-    await chargeReservedAsUsed(reservation.routeItemId, reservation.dayBucket, reservation.reservedTokens);
   }
 
   return { acquire, finalize };

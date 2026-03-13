@@ -16,8 +16,8 @@ export async function createAppContext(config: AppConfig): Promise<AppContext> {
   const db = createGatewayDb(config.databasePath);
   await initSchema(db);
 
-  if (config.routeItems && config.routeItems.length > 0) {
-    await syncRouteItemsFromConfig(db, config.routeItems, config.routeItemsMode ?? "authoritative");
+  if (config.routes && config.routes.length > 0) {
+    await syncRouteItemsFromConfig(db, config.routes, config.configLoadMode ?? "authoritative");
   }
 
   return {

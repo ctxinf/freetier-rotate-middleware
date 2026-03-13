@@ -9,7 +9,7 @@ type ProxyParams = {
   requestId: string;
   clientReq: Request;
   clientBody: any;
-  publicModel: string;
+  entryModel: string;
 };
 
 function shouldStream(clientBody: any, clientReq: Request): boolean {
@@ -120,7 +120,7 @@ async function tryOneCandidate(
       body: JSON.stringify(upstreamBody)
     });
   } catch (e) {
-    await p.app.quota.finalize(acquired.reservation, undefined);
+    await p.app.quota.finalize(acquired.tokenDayCharge, undefined);
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
@@ -134,7 +134,7 @@ async function tryOneCandidate(
 
   // Retry-able upstream errors: allow fallback to next candidate.
   if (!upstreamRes.ok && (upstreamRes.status === 429 || upstreamRes.status >= 500)) {
-    await p.app.quota.finalize(acquired.reservation, undefined);
+    await p.app.quota.finalize(acquired.tokenDayCharge, undefined);
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
@@ -154,7 +154,7 @@ async function tryOneCandidate(
       // ignore
     }
 
-    await p.app.quota.finalize(acquired.reservation, usage);
+    await p.app.quota.finalize(acquired.tokenDayCharge, usage);
     const logRow: {
       requestId: string;
       routeItemId: number;
@@ -177,7 +177,7 @@ async function tryOneCandidate(
   }
 
   if (!upstreamRes.body) {
-    await p.app.quota.finalize(acquired.reservation, undefined);
+    await p.app.quota.finalize(acquired.tokenDayCharge, undefined);
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
@@ -193,7 +193,7 @@ async function tryOneCandidate(
   const [clientStream, collectorStream] = upstreamRes.body.tee();
   collectUsageFromSse(collectorStream)
     .then(async (usage) => {
-      await p.app.quota.finalize(acquired.reservation, usage);
+      await p.app.quota.finalize(acquired.tokenDayCharge, usage);
       const logRow: {
         requestId: string;
         routeItemId: number;
@@ -210,7 +210,7 @@ async function tryOneCandidate(
       await upsertRequestLog(p.app, logRow);
     })
     .catch(async () => {
-      await p.app.quota.finalize(acquired.reservation, undefined);
+      await p.app.quota.finalize(acquired.tokenDayCharge, undefined);
       await upsertRequestLog(p.app, {
         requestId: p.requestId,
         routeItemId: candidate.id,
@@ -228,11 +228,11 @@ async function tryOneCandidate(
 export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
   const stream = shouldStream(p.clientBody, p.clientReq);
 
-  const candidates = await p.app.router.listCandidates(p.publicModel);
+  const candidates = await p.app.router.listCandidates(p.entryModel);
   if (candidates.length === 0) {
     const url = upstreamUrl(p.app.config.upstreamBaseUrl);
     const headers = buildUpstreamHeaders(p.app, p.clientReq, p.requestId);
-    const upstreamBody = { ...p.clientBody, model: p.publicModel };
+    const upstreamBody = { ...p.clientBody, model: p.entryModel };
     const started = Date.now();
     const upstreamRes = await fetch(url, { method: "POST", headers, body: JSON.stringify(upstreamBody) });
     const latencyMs = Date.now() - started;

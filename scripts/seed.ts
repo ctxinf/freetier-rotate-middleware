@@ -5,8 +5,8 @@ const databasePath = process.env.DATABASE_PATH ?? "./data/gateway.sqlite";
 const db = createGatewayDb(databasePath);
 await initSchema(db);
 
-const publicModel = process.argv[2] ?? "gpt-4o-mini";
-const upstreamModel = process.argv[3] ?? publicModel;
+const entryModel = process.argv[2] ?? "gpt-4o-mini";
+const upstreamModel = process.argv[3] ?? entryModel;
 
 // Example configs:
 // token_day: {"dailyTokenLimit":2000000,"resetHourUtc":0}
@@ -17,8 +17,8 @@ const configJson = process.argv[6] ?? JSON.stringify({ reqPerMin: 999999, reqPer
 
 await db.raw.execute({
   sql: "INSERT INTO route_items(public_model, upstream_model, strategy_type, priority, config_json, enabled) VALUES(?, ?, ?, ?, ?, 1)",
-  args: [publicModel, upstreamModel, strategyType, priority, configJson]
+  args: [entryModel, upstreamModel, strategyType, priority, configJson]
 });
 
 // eslint-disable-next-line no-console
-console.log("seeded route_item", { publicModel, upstreamModel, strategyType, priority, configJson });
+console.log("seeded route_item", { entryModel, upstreamModel, strategyType, priority, configJson });

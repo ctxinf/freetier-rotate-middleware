@@ -7,14 +7,14 @@ export type AppConfig = {
   port: number;
   upstreamBaseUrl: string;
   databasePath: string;
-  routeItems?: RouteItemConfig[];
-  routeItemsMode?: RouteItemsMode;
+  routes?: RouteConfig[];
+  configLoadMode?: ConfigLoadMode;
 };
 
-export type RouteItemsMode = "authoritative" | "merge";
+export type ConfigLoadMode = "authoritative" | "merge";
 
-export type RouteItemConfig = {
-  publicModel: string;
+export type RouteConfig = {
+  entryModel: string;
   upstreamModel: string;
   strategyType: "token_day" | "req_min_day";
   priority: number;
@@ -47,6 +47,10 @@ function normalizeTokenDayConfigToTokens(input: any): any {
     delete obj.dailyTokenLimitM;
     delete obj.dailyTokenLimitTokens;
   }
+
+  // Removed config keys: keep backwards-compat but strip them to reduce confusion.
+  delete obj.reserveMultiplier;
+  delete obj.reserveFloor;
 
   return obj;
 }
@@ -166,33 +170,34 @@ function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
     if (typeof obj.upstreamBaseUrl === "string") fileConfig.upstreamBaseUrl = obj.upstreamBaseUrl;
     if (typeof obj.databasePath === "string") fileConfig.databasePath = obj.databasePath;
 
-    const mode = obj.routeItemsMode;
-    if (mode === "authoritative" || mode === "merge") fileConfig.routeItemsMode = mode;
+    const mode = obj.configLoadMode ?? obj.routeItemsMode;
+    if (mode === "authoritative" || mode === "merge") fileConfig.configLoadMode = mode;
 
-    const routeItems = obj.routeItems;
-    if (Array.isArray(routeItems)) {
-      fileConfig.routeItems = routeItems.map((rawItem: any, idx: number) => {
-        const publicModel = rawItem?.publicModel ?? rawItem?.public_model;
+    const routes = obj.routes ?? obj.routeItems;
+    if (Array.isArray(routes)) {
+      fileConfig.routes = routes.map((rawItem: any, idx: number) => {
+        const entryModel =
+          rawItem?.entryModel ?? rawItem?.publicModel ?? rawItem?.entry_model ?? rawItem?.public_model;
         const upstreamModel = rawItem?.upstreamModel ?? rawItem?.upstream_model;
         const strategyType = rawItem?.strategyType ?? rawItem?.strategy_type;
         const priorityRaw = rawItem?.priority ?? rawItem?.prio;
         const enabledRaw = rawItem?.enabled;
         const configJsonRaw = rawItem?.configJson ?? rawItem?.config_json ?? rawItem?.config;
 
-        if (typeof publicModel !== "string" || publicModel.length === 0) {
-          throw new Error(`routeItems[${idx}] missing publicModel`);
+        if (typeof entryModel !== "string" || entryModel.length === 0) {
+          throw new Error(`routes[${idx}] missing entryModel`);
         }
         if (typeof upstreamModel !== "string" || upstreamModel.length === 0) {
-          throw new Error(`routeItems[${idx}] missing upstreamModel`);
+          throw new Error(`routes[${idx}] missing upstreamModel`);
         }
         if (strategyType !== "token_day" && strategyType !== "req_min_day") {
-          throw new Error(`routeItems[${idx}] invalid strategyType: ${String(strategyType)}`);
+          throw new Error(`routes[${idx}] invalid strategyType: ${String(strategyType)}`);
         }
 
         const priority = Number(priorityRaw ?? 0);
-        if (!Number.isFinite(priority)) throw new Error(`routeItems[${idx}] invalid priority`);
+        if (!Number.isFinite(priority)) throw new Error(`routes[${idx}] invalid priority`);
 
-      const enabled = enabledRaw === 0 || enabledRaw === "0" ? 0 : 1;
+        const enabled = enabledRaw === 0 || enabledRaw === "0" ? 0 : 1;
 
         let configJson = "{}";
         if (typeof configJsonRaw === "string") {
@@ -205,7 +210,7 @@ function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
           configJson = JSON.stringify(normalized);
         }
 
-        return { publicModel, upstreamModel, strategyType, priority, enabled, configJson };
+        return { entryModel, upstreamModel, strategyType, priority, enabled, configJson };
       });
     }
   }
@@ -226,7 +231,7 @@ export function loadConfig(): AppConfig {
   const databasePath = process.env.DATABASE_PATH ?? fileConfig.databasePath ?? "./data/gateway.sqlite";
 
   const cfg: AppConfig = { port, upstreamBaseUrl, databasePath };
-  if (fileConfig.routeItems && fileConfig.routeItems.length > 0) cfg.routeItems = fileConfig.routeItems;
-  if (fileConfig.routeItemsMode) cfg.routeItemsMode = fileConfig.routeItemsMode;
+  if (fileConfig.routes && fileConfig.routes.length > 0) cfg.routes = fileConfig.routes;
+  if (fileConfig.configLoadMode) cfg.configLoadMode = fileConfig.configLoadMode;
   return cfg;
 }

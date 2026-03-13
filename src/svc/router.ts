@@ -6,7 +6,7 @@ export type StrategyType = "token_day" | "req_min_day";
 
 export type RouteItem = {
   id: number;
-  publicModel: string;
+  entryModel: string;
   upstreamModel: string;
   strategyType: StrategyType;
   priority: number;
@@ -15,11 +15,11 @@ export type RouteItem = {
 };
 
 export function createRouter(db: GatewayDb) {
-  async function listCandidates(publicModel: string): Promise<RouteItem[]> {
+  async function listCandidates(entryModel: string): Promise<RouteItem[]> {
     const rows = await db.orm
       .select()
       .from(routeItems)
-      .where(and(eq(routeItems.publicModel, publicModel), eq(routeItems.enabled, 1)))
+      .where(and(eq(routeItems.entryModel, entryModel), eq(routeItems.enabled, 1)))
       .orderBy(desc(routeItems.priority), asc(routeItems.id));
 
     return rows.map((r) => ({
@@ -30,4 +30,3 @@ export function createRouter(db: GatewayDb) {
 
   return { listCandidates };
 }
-
