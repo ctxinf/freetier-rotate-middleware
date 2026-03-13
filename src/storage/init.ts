@@ -1,10 +1,11 @@
 import type { GatewayDb } from "./db.js";
 
 export async function initSchema(db: GatewayDb): Promise<void> {
+  await db.raw.execute("PRAGMA busy_timeout = 5000");
+  await db.raw.execute("PRAGMA journal_mode = WAL");
+
   await db.raw.batch(
     [
-      "PRAGMA journal_mode = WAL",
-      "PRAGMA busy_timeout = 5000",
       `CREATE TABLE IF NOT EXISTS route_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         public_model TEXT NOT NULL,
