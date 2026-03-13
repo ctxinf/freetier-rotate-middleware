@@ -28,3 +28,23 @@ npm run db:seed -- doubao-seed-xxx doubao-seed-xxx token_day 100 '{"dailyTokenLi
 - `GET /v1/models` lists enabled models (OpenAI-compatible)
 - `GET /_health`
 - `GET /_status` and `GET /_status/json`
+
+## Admin REST API
+- `GET /admin/routes`
+- `GET /admin/routes/:id`
+- `POST /admin/routes`
+- `PUT /admin/routes/:id`
+- `DELETE /admin/routes/:id`
+- `POST /admin/request-logs/cleanup` or `DELETE /admin/request-logs`
+  - `olderThan=1h|1d`
+  - `keepLatest=100..500`
+- `GET /admin/settings/upstream-base-url`
+- `PUT /admin/settings/upstream-base-url`
+
+## Config Notes
+- `configLoadMode`:
+  - `authoritative`: startup config fully overwrites DB routes by unique key `entryModel+upstreamModel` (insert/update/delete).
+  - `load_once`: startup only inserts missing routes by `entryModel+upstreamModel`, existing ones are kept unchanged.
+- `LOG_LEVEL`: `debug` / `info` / `warn` / `error` (also supported in config file via `logLevel`).
+- `logtape` backend is auto-detected. Install to enable:
+  - `npm i @logtape/logtape @logtape/console`

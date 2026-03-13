@@ -123,7 +123,7 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
     now: now.toISOString(),
     config: {
       port: config.port,
-      upstreamBaseUrl: config.upstreamBaseUrl,
+      upstreamBaseUrl: app.runtime.getUpstreamBaseUrl(),
       databasePath: config.databasePath
     },
     routes: itemsWithUsage,

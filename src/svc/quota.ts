@@ -1,4 +1,5 @@
 import type { GatewayDb } from "../storage/db.js";
+import { createLogger } from "../logging.js";
 import type { RouteItem, StrategyType } from "./router.js";
 
 type TokenDayConfig = {
@@ -22,6 +23,8 @@ type TokenDayCharge = { routeItemId: number; dayBucket: string };
 export type AcquireHandle =
   | { ok: true; routeItem: RouteItem; tokenDayCharge?: TokenDayCharge }
   | { ok: false; reason: string };
+
+const log = createLogger("svc.quota");
 
 function parseConfig(strategyType: StrategyType, configJson: string): TokenDayConfig | ReqMinDayConfig {
   let obj: any = {};
@@ -157,6 +160,7 @@ export function createQuotaService(db: GatewayDb) {
       try {
         cfg = parseConfig("req_min_day", routeItem.configJson) as ReqMinDayConfig;
       } catch {
+        log.warn("invalid req_min_day route config", { routeItemId: routeItem.id });
         return { ok: false, reason: "invalid config" };
       }
       const minuteBucket = utcMinuteString(now);
@@ -172,6 +176,7 @@ export function createQuotaService(db: GatewayDb) {
       try {
         cfg = parseConfig("token_day", routeItem.configJson) as TokenDayConfig;
       } catch {
+        log.warn("invalid token_day route config", { routeItemId: routeItem.id });
         return { ok: false, reason: "invalid config" };
       }
       const dayBucket = quotaDayBucket(now, cfg.resetHourUtc ?? 0);
@@ -193,6 +198,7 @@ export function createQuotaService(db: GatewayDb) {
     const actual = usage?.total_tokens;
     if (typeof actual === "number" && Number.isFinite(actual) && actual >= 0) {
       await chargeTokens(charge.routeItemId, charge.dayBucket, actual);
+      log.debug("token_day charged", { routeItemId: charge.routeItemId, dayBucket: charge.dayBucket, totalTokens: actual });
     }
   }
 

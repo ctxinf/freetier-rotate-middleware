@@ -10,9 +10,12 @@
   // SQLite path (can still be overridden by env DATABASE_PATH)
   "databasePath": "./data/gateway.sqlite",
 
+  // Log level (can still be overridden by env LOG_LEVEL)
+  "logLevel": "info",
+
   // How to sync routes into sqlite on startup:
-  // - authoritative: insert/update items from config, and delete DB rows not present here
-  // - merge: insert/update items from config, do not touch other DB rows
+  // - authoritative: insert/update by entryModel+upstreamModel, and delete rows not present in config
+  // - load_once: insert only; if entryModel+upstreamModel exists, skip it
   "configLoadMode": "authoritative",
 
   "routes": [

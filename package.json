@@ -8,11 +8,11 @@
     "start": "node dist/src/server.js",
     "build": "tsc -p tsconfig.json",
     "db:seed": "tsx scripts/seed.ts"
-    
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@libsql/client": "^0.15.15",
+    "@logtape/logtape": "^2.0.4",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.36.0",
     "hono": "^4.6.0",

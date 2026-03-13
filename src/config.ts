@@ -9,9 +9,11 @@ export type AppConfig = {
   databasePath: string;
   routes?: RouteConfig[];
   configLoadMode?: ConfigLoadMode;
+  logLevel?: LogLevel;
 };
 
-export type ConfigLoadMode = "authoritative" | "merge";
+export type ConfigLoadMode = "authoritative" | "load_once";
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export type RouteConfig = {
   entryModel: string;
@@ -171,7 +173,12 @@ function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
     if (typeof obj.databasePath === "string") fileConfig.databasePath = obj.databasePath;
 
     const mode = obj.configLoadMode ?? obj.routeItemsMode;
-    if (mode === "authoritative" || mode === "merge") fileConfig.configLoadMode = mode;
+    if (mode === "authoritative" || mode === "load_once") fileConfig.configLoadMode = mode;
+    if (mode === "merge") fileConfig.configLoadMode = "load_once";
+
+    if (obj.logLevel === "debug" || obj.logLevel === "info" || obj.logLevel === "warn" || obj.logLevel === "error") {
+      fileConfig.logLevel = obj.logLevel;
+    }
 
     const routes = obj.routes ?? obj.routeItems;
     if (Array.isArray(routes)) {
@@ -229,8 +236,12 @@ export function loadConfig(): AppConfig {
   if (!upstreamBaseUrl) throw new Error("Missing UPSTREAM_BASE_URL (or set it in CONFIG_PATH JSON)");
 
   const databasePath = process.env.DATABASE_PATH ?? fileConfig.databasePath ?? "./data/gateway.sqlite";
+  const logLevelRaw = process.env.LOG_LEVEL ?? fileConfig.logLevel ?? "info";
+  if (logLevelRaw !== "debug" && logLevelRaw !== "info" && logLevelRaw !== "warn" && logLevelRaw !== "error") {
+    throw new Error("Invalid LOG_LEVEL, must be one of: debug/info/warn/error");
+  }
 
-  const cfg: AppConfig = { port, upstreamBaseUrl, databasePath };
+  const cfg: AppConfig = { port, upstreamBaseUrl, databasePath, logLevel: logLevelRaw };
   if (fileConfig.routes && fileConfig.routes.length > 0) cfg.routes = fileConfig.routes;
   if (fileConfig.configLoadMode) cfg.configLoadMode = fileConfig.configLoadMode;
   return cfg;
