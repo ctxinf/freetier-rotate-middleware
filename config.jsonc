@@ -1,9 +1,9 @@
 {
   // Service port (can still be overridden by env PORT)
-  "port": 3000,
+  "port": 3001,
 
   // Upstream OpenAI-compatible base URL (can still be overridden by env UPSTREAM_BASE_URL)
-  "upstreamBaseUrl": "http://localhost:8080",
+  "upstreamBaseUrl": "http://ubuntu.local.ai:3000",
 
   // Authorization header will be transparently forwarded to upstream.
 
@@ -20,7 +20,7 @@
       "entryModel": "my-api:free",
       "upstreamModel": "z-ai/glm4.7",
       "strategyType": "req_min_day",
-      "priority": 100,
+      "priority": 0,
       "enabled": 1,
       "config": { "reqPerMin": 2, "reqPerDay": 10000 }
     },
