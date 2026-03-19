@@ -207,32 +207,41 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     const payload = await buildStatusPayload(ctx, config, now);
     c.header("cache-control", "no-store");
 
-    const routeRows: Array<Array<string | number | null | undefined>> = payload.routes.map((ri: any) => {
-      const enabled = ri.enabled === 1 ? "1" : "0";
-      let bucket = "-";
+    const routeGroups = new Map<string, Array<Array<string | number | null | undefined>>>();
+    for (const ri of payload.routes as any[]) {
+      const enabled = ri.enabled === 1 ? "🟢" : "";
       let usage = "-";
 
       if (ri.strategyType === "req_min_day") {
         const minute = ri.counters?.minute;
         const day = ri.counters?.day;
         const cfg = ri.parsedConfig ?? {};
-        bucket = `${ri.buckets.minuteBucket} | ${ri.buckets.dayBucket}`;
         usage = `req: ${minute?.used_req ?? 0}/${cfg.reqPerMin ?? "?"}/min, ${day?.used_req ?? 0}/${cfg.reqPerDay ?? "?"}/day`;
       } else if (ri.strategyType === "token_day") {
         const day = ri.counters?.day;
         const cfg = ri.parsedConfig ?? {};
-        bucket = `${ri.buckets.dayBucket} (reset@${ri.buckets.resetHourUtc}hZ)`;
         usage = `tok: used ${formatTokensM(day?.used_tokens ?? 0)}, limit ${formatTokensM(cfg.dailyTokenLimit)}`;
       }
 
-      return [ri.id, enabled, ri.entryModel, ri.upstreamModel, ri.strategyType, ri.priority, bucket, usage];
-    });
+      const entryModel = String(ri.entryModel);
+      if (!routeGroups.has(entryModel)) routeGroups.set(entryModel, []);
+      routeGroups.get(entryModel)!.push([enabled, ri.upstreamModel, ri.strategyType, ri.priority, usage]);
+    }
+
+    const routeGroupsHtml = Array.from(routeGroups.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(
+        ([entryModel, rows]) => `<h3>${escapeHtml(entryModel)}</h3>${renderTable(
+          ["en", "upstream_model", "strategy", "prio", "usage"],
+          rows
+        )}`
+      )
+      .join("");
 
     const upstreamRows: Array<Array<string | number | null | undefined>> = (payload.upstreams as any[]).map((u) => [
       `${u.enabledCount}/${u.routeCount}`,
       u.upstreamModel,
       u.strategyType,
-      (u.entryModels as string[]).join(", "),
       u.priorityRange,
       u.bucket,
       u.usage
@@ -265,6 +274,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
       th { background: #f6f6f6; text-align: left; position: sticky; top: 0; }
       td { word-break: break-word; }
       ul { margin: 8px 0 16px 18px; }
+      h3 { margin: 8px 0 8px; font-size: 16px; }
       .small { font-size: 12px; color: #555; }
     </style>
   </head>
@@ -279,17 +289,14 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
       <li>databasePath: ${escapeHtml(payload.config.databasePath)}</li>
     </ul>
 
-    <h2>route_items</h2>
-    ${renderTable(
-      ["id", "en", "entry_model", "upstream_model", "strategy", "prio", "bucket", "usage"],
-      routeRows
-    )}
-
     <h2>upstreams</h2>
     ${renderTable(
-      ["en/routes", "upstream_model", "strategy", "entry_models", "prio(max..min)", "bucket", "usage"],
+      ["en/routes", "upstream_model", "strategy", "prio(max..min)", "bucket", "usage"],
       upstreamRows
     )}
+
+    <h2>route_items (grouped by entry_model)</h2>
+    ${routeGroupsHtml}
 
     <h2>request_logs_recent (top 50)</h2>
     ${renderTable(

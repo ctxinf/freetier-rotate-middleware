@@ -44,6 +44,24 @@
       }
     },
     {
+      "upstreamModel": "doubao-seed-2-0-mini-260215",
+      "strategyType": "token_day",
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
+        "resetHourUtc": 1
+      }
+    },
+    {
+      "upstreamModel": "doubao-seed-2-0-lite-260215",
+      "strategyType": "token_day",
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
+        "resetHourUtc": 1
+      }
+    },
+    {
       "upstreamModel": "glm-4-7-251222",
       "strategyType": "token_day",
       "enabled": 1,
@@ -82,6 +100,32 @@
         { "upstreamModel": "doubao-seed-code-preview-251028", "priority": 90 },
         { "upstreamModel": "doubao-seed-1-8-251228", "priority": 85 },
         { "upstreamModel": "z-ai/glm4.7", "priority": 0 }
+      ]
+    },
+    {
+      "entryModel": "group-code",
+      "routes": [
+        { "upstreamModel": "z-ai/glm4.7", "priority": 100 },
+        { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 95 },
+        { "upstreamModel": "doubao-seed-code-preview-251028", "priority": 90 },
+        { "upstreamModel": "glm-4-7-251222", "priority": 85 }
+      ]
+    },
+    {
+      "entryModel": "group-fast",
+      "routes": [
+        { "upstreamModel": "doubao-seed-2-0-mini-260215", "priority": 100 },
+        { "upstreamModel": "doubao-seed-2-0-lite-260215", "priority": 95 },
+        { "upstreamModel": "doubao-seed-1-8-251228", "priority": 90 }
+      ]
+    },
+    {
+      "entryModel": "group-rotate",
+      "routes": [
+        { "upstreamModel": "doubao-seed-2-0-pro-260215", "priority": 100 },
+        { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 100 },
+        { "upstreamModel": "doubao-seed-code-preview-251028", "priority": 100 },
+        { "upstreamModel": "doubao-seed-1-8-251228", "priority": 100 }
       ]
     }
   ]
