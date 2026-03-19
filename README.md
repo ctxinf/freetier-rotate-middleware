@@ -42,6 +42,10 @@ npm run db:seed -- doubao-seed-xxx doubao-seed-xxx token_day 100 '{"dailyTokenLi
 - `PUT /admin/settings/upstream-base-url`
 
 ## Config Notes
+- Recommend using `upstreams + groups`:
+  - `upstreams`: policy bound to `upstreamModel` (quota计数/计费按 upstream 维度共享)。
+  - `groups`: define `entryModel -> [{ upstreamModel, priority, ... }]`.
+  - Same `priority` within one entry uses rotate round-robin.
 - `configLoadMode`:
   - `authoritative`: startup config fully overwrites DB routes by unique key `entryModel+upstreamModel` (insert/update/delete).
   - `load_once`: startup only inserts missing routes by `entryModel+upstreamModel`, existing ones are kept unchanged.

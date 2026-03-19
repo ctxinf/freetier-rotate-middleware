@@ -65,12 +65,17 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
     .from(routeItemsTable)
     .orderBy(asc(routeItemsTable.entryModel), desc(routeItemsTable.priority), asc(routeItemsTable.id));
 
-  const getCounter = async (routeItemId: number, bucketKey: string): Promise<any | null> => {
+  const counterCache = new Map<string, any | null>();
+  const getCounter = async (upstreamModel: string, bucketKey: string): Promise<any | null> => {
+    const cacheKey = `${upstreamModel}::${bucketKey}`;
+    if (counterCache.has(cacheKey)) return counterCache.get(cacheKey) ?? null;
     const res = await app.db.raw.execute({
-      sql: "SELECT used_tokens, used_req, updated_at FROM quota_counters WHERE route_item_id = ? AND bucket_key = ?",
-      args: [routeItemId, bucketKey]
+      sql: "SELECT used_tokens, used_req, updated_at FROM quota_counters WHERE upstream_model = ? AND bucket_key = ?",
+      args: [upstreamModel, bucketKey]
     });
-    return (res?.rows?.[0] as any) ?? null;
+    const row = (res?.rows?.[0] as any) ?? null;
+    counterCache.set(cacheKey, row);
+    return row;
   };
 
   const itemsWithUsage: any[] = [];
@@ -85,8 +90,8 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
         parsedConfig: parsed,
         buckets: { minuteBucket, dayBucket },
         counters: {
-          minute: await getCounter(ri.id, minuteBucket),
-          day: await getCounter(ri.id, dayBucket)
+          minute: await getCounter(ri.upstreamModel, minuteBucket),
+          day: await getCounter(ri.upstreamModel, dayBucket)
         }
       });
       continue;
@@ -100,7 +105,7 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
         parsedConfig: parsed,
         buckets: { dayBucket, resetHourUtc },
         counters: {
-          day: await getCounter(ri.id, dayBucket)
+          day: await getCounter(ri.upstreamModel, dayBucket)
         }
       });
       continue;
@@ -110,14 +115,71 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
   }
 
   const recentCountersRes = await app.db.raw.execute(
-    "SELECT route_item_id, bucket_key, used_tokens, used_req, updated_at FROM quota_counters ORDER BY updated_at DESC LIMIT 200"
+    "SELECT upstream_model, bucket_key, used_tokens, used_req, updated_at FROM quota_counters ORDER BY updated_at DESC LIMIT 200"
   );
   const recentCounters = (recentCountersRes?.rows as any[]) ?? [];
 
   const recentRequestLogsRes = await app.db.raw.execute(
-    "SELECT request_id, route_item_id, status, prompt_tokens, completion_tokens, total_tokens, latency_ms, created_at FROM request_logs ORDER BY created_at DESC LIMIT 100"
+    "SELECT request_id, route_item_id, upstream_model, status, prompt_tokens, completion_tokens, total_tokens, latency_ms, created_at FROM request_logs ORDER BY created_at DESC LIMIT 100"
   );
   const recentRequestLogs = (recentRequestLogsRes?.rows as any[]) ?? [];
+
+  const upstreamMap = new Map<string, any>();
+  for (const ri of itemsWithUsage) {
+    const key = String(ri.upstreamModel);
+    const existing = upstreamMap.get(key);
+    if (!existing) {
+      upstreamMap.set(key, {
+        upstreamModel: key,
+        strategyType: ri.strategyType,
+        enabledCount: ri.enabled === 1 ? 1 : 0,
+        routeCount: 1,
+        minPriority: ri.priority,
+        maxPriority: ri.priority,
+        entryModels: new Set<string>([String(ri.entryModel)]),
+        sample: ri,
+        mixedStrategy: false
+      });
+      continue;
+    }
+    existing.routeCount += 1;
+    if (ri.enabled === 1) existing.enabledCount += 1;
+    existing.minPriority = Math.min(existing.minPriority, Number(ri.priority));
+    existing.maxPriority = Math.max(existing.maxPriority, Number(ri.priority));
+    existing.entryModels.add(String(ri.entryModel));
+    if (existing.strategyType !== ri.strategyType) existing.mixedStrategy = true;
+  }
+
+  const upstreams = Array.from(upstreamMap.values())
+    .map((u) => {
+      const sample = u.sample;
+      const strategyType = u.mixedStrategy ? "mixed" : u.strategyType;
+      let bucket = "-";
+      let usage = "-";
+      if (!u.mixedStrategy && sample?.strategyType === "req_min_day") {
+        const minute = sample.counters?.minute;
+        const day = sample.counters?.day;
+        const cfg = sample.parsedConfig ?? {};
+        bucket = `${sample.buckets?.minuteBucket ?? "-"} | ${sample.buckets?.dayBucket ?? "-"}`;
+        usage = `req: ${minute?.used_req ?? 0}/${cfg.reqPerMin ?? "?"}/min, ${day?.used_req ?? 0}/${cfg.reqPerDay ?? "?"}/day`;
+      } else if (!u.mixedStrategy && sample?.strategyType === "token_day") {
+        const day = sample.counters?.day;
+        const cfg = sample.parsedConfig ?? {};
+        bucket = `${sample.buckets?.dayBucket ?? "-"} (reset@${sample.buckets?.resetHourUtc ?? 0}hZ)`;
+        usage = `tok: used ${formatTokensM(day?.used_tokens ?? 0)}, limit ${formatTokensM(cfg.dailyTokenLimit)}`;
+      }
+      return {
+        upstreamModel: u.upstreamModel,
+        strategyType,
+        enabledCount: u.enabledCount,
+        routeCount: u.routeCount,
+        priorityRange: `${u.maxPriority}..${u.minPriority}`,
+        entryModels: Array.from(u.entryModels).sort(),
+        bucket,
+        usage
+      };
+    })
+    .sort((a, b) => a.upstreamModel.localeCompare(b.upstreamModel));
 
   return {
     now: now.toISOString(),
@@ -126,6 +188,7 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
       upstreamBaseUrl: app.runtime.getUpstreamBaseUrl(),
       databasePath: config.databasePath
     },
+    upstreams,
     routes: itemsWithUsage,
     quotaCountersRecent: recentCounters,
     requestLogsRecent: recentRequestLogs
@@ -165,12 +228,23 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
       return [ri.id, enabled, ri.entryModel, ri.upstreamModel, ri.strategyType, ri.priority, bucket, usage];
     });
 
+    const upstreamRows: Array<Array<string | number | null | undefined>> = (payload.upstreams as any[]).map((u) => [
+      `${u.enabledCount}/${u.routeCount}`,
+      u.upstreamModel,
+      u.strategyType,
+      (u.entryModels as string[]).join(", "),
+      u.priorityRange,
+      u.bucket,
+      u.usage
+    ]);
+
     const reqRows: Array<Array<string | number | null | undefined>> = (payload.requestLogsRecent as any[])
       .slice(0, 50)
       .map((r) => [
         r.created_at,
         r.status,
         r.route_item_id,
+        r.upstream_model,
         r.total_tokens,
         r.latency_ms,
         r.request_id
@@ -211,9 +285,15 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
       routeRows
     )}
 
+    <h2>upstreams</h2>
+    ${renderTable(
+      ["en/routes", "upstream_model", "strategy", "entry_models", "prio(max..min)", "bucket", "usage"],
+      upstreamRows
+    )}
+
     <h2>request_logs_recent (top 50)</h2>
     ${renderTable(
-      ["created_at", "status", "route_item_id", "total_tokens", "lat_ms", "request_id"],
+      ["created_at", "status", "route_item_id", "upstream_model", "total_tokens", "lat_ms", "request_id"],
       reqRows
     )}
   </body>

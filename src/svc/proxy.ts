@@ -59,6 +59,7 @@ function filterUpstreamResponseHeaders(up: Response): Headers {
 async function upsertRequestLog(app: AppContext, row: {
   requestId: string;
   routeItemId?: number;
+  upstreamModel?: string;
   status?: number;
   usage?: Usage;
   latencyMs?: number;
@@ -71,6 +72,10 @@ async function upsertRequestLog(app: AppContext, row: {
   if (row.routeItemId !== undefined) {
     insertValues.routeItemId = row.routeItemId;
     updateSet.routeItemId = row.routeItemId;
+  }
+  if (row.upstreamModel !== undefined) {
+    insertValues.upstreamModel = row.upstreamModel;
+    updateSet.upstreamModel = row.upstreamModel;
   }
   if (row.status !== undefined) {
     insertValues.status = row.status;
@@ -137,6 +142,7 @@ async function tryOneCandidate(
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
+      upstreamModel: candidate.upstreamModel,
       status: 502,
       latencyMs: Date.now() - started
     });
@@ -153,6 +159,7 @@ async function tryOneCandidate(
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
+      upstreamModel: candidate.upstreamModel,
       status: upstreamRes.status,
       latencyMs
     });
@@ -174,12 +181,14 @@ async function tryOneCandidate(
     const logRow: {
       requestId: string;
       routeItemId: number;
+      upstreamModel: string;
       status: number;
       latencyMs: number;
       usage?: Usage;
     } = {
       requestId: p.requestId,
       routeItemId: candidate.id,
+      upstreamModel: candidate.upstreamModel,
       status: upstreamRes.status,
       latencyMs
     };
@@ -198,6 +207,7 @@ async function tryOneCandidate(
     await upsertRequestLog(p.app, {
       requestId: p.requestId,
       routeItemId: candidate.id,
+      upstreamModel: candidate.upstreamModel,
       status: 502,
       latencyMs
     });
@@ -215,12 +225,14 @@ async function tryOneCandidate(
       const logRow: {
         requestId: string;
         routeItemId: number;
+        upstreamModel: string;
         status: number;
         latencyMs: number;
         usage?: Usage;
       } = {
         requestId: p.requestId,
         routeItemId: candidate.id,
+        upstreamModel: candidate.upstreamModel,
         status: upstreamRes.status,
         latencyMs
       };
@@ -233,6 +245,7 @@ async function tryOneCandidate(
       await upsertRequestLog(p.app, {
         requestId: p.requestId,
         routeItemId: candidate.id,
+        upstreamModel: candidate.upstreamModel,
         status: upstreamRes.status,
         latencyMs
       });
@@ -264,7 +277,12 @@ export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
       upstreamRes = await fetch(url, { method: "POST", headers, body: JSON.stringify(upstreamBody) });
     } catch (e) {
       requestLog.error("direct upstream fallback failed", sanitizeError(e));
-      await upsertRequestLog(p.app, { requestId: p.requestId, status: 502, latencyMs: Date.now() - started });
+      await upsertRequestLog(p.app, {
+        requestId: p.requestId,
+        upstreamModel: p.entryModel,
+        status: 502,
+        latencyMs: Date.now() - started
+      });
       return new Response(JSON.stringify({ error: { message: "Upstream request failed" } }), {
         status: 502,
         headers: { "content-type": "application/json" }
@@ -274,13 +292,23 @@ export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
 
     if (!stream) {
       const text = await upstreamRes.text();
-      await upsertRequestLog(p.app, { requestId: p.requestId, status: upstreamRes.status, latencyMs });
+      await upsertRequestLog(p.app, {
+        requestId: p.requestId,
+        upstreamModel: p.entryModel,
+        status: upstreamRes.status,
+        latencyMs
+      });
       requestLog.info("direct fallback completed", { status: upstreamRes.status, latencyMs });
       return new Response(text, { status: upstreamRes.status, headers: filterUpstreamResponseHeaders(upstreamRes) });
     }
 
     if (!upstreamRes.body) {
-      await upsertRequestLog(p.app, { requestId: p.requestId, status: 502, latencyMs });
+      await upsertRequestLog(p.app, {
+        requestId: p.requestId,
+        upstreamModel: p.entryModel,
+        status: 502,
+        latencyMs
+      });
       requestLog.error("direct fallback stream missing body", { status: upstreamRes.status, latencyMs });
       return new Response(JSON.stringify({ error: { message: "Upstream stream missing body" } }), {
         status: 502,
@@ -305,7 +333,7 @@ export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
 
   const finalStatus = hasUpstreamFailure ? 502 : 429;
   const finalMessage = hasUpstreamFailure ? "All route items failed at upstream" : "All route items exhausted";
-  await upsertRequestLog(p.app, { requestId: p.requestId, status: finalStatus });
+  await upsertRequestLog(p.app, { requestId: p.requestId, upstreamModel: p.entryModel, status: finalStatus });
   if (hasUpstreamFailure) {
     requestLog.error("all candidates failed due to upstream errors");
   } else if (hasQuotaExhausted) {

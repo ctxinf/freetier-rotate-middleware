@@ -18,7 +18,7 @@ export type Usage = {
   total_tokens?: number;
 };
 
-type TokenDayCharge = { routeItemId: number; dayBucket: string };
+type TokenDayCharge = { upstreamModel: string; dayBucket: string };
 
 export type AcquireHandle =
   | { ok: true; routeItem: RouteItem; tokenDayCharge?: TokenDayCharge }
@@ -89,22 +89,22 @@ function quotaDayBucket(now: Date, resetHourUtc: number): string {
 }
 
 export function createQuotaService(db: GatewayDb) {
-  async function ensureCounterRow(executor: { execute: (stmt: any) => Promise<any> }, routeItemId: number, bucketKey: string): Promise<void> {
+  async function ensureCounterRow(executor: { execute: (stmt: any) => Promise<any> }, upstreamModel: string, bucketKey: string): Promise<void> {
     await executor.execute({
-      sql: "INSERT INTO quota_counters(route_item_id, bucket_key) VALUES(?, ?) ON CONFLICT(route_item_id, bucket_key) DO NOTHING",
-      args: [routeItemId, bucketKey]
+      sql: "INSERT INTO quota_counters(upstream_model, bucket_key) VALUES(?, ?) ON CONFLICT(upstream_model, bucket_key) DO NOTHING",
+      args: [upstreamModel, bucketKey]
     });
   }
 
-  async function consumeReqMinuteAndDay(routeItemId: number, minuteBucket: string, minuteLimit: number, dayBucket: string, dayLimit: number): Promise<boolean> {
+  async function consumeReqMinuteAndDay(upstreamModel: string, minuteBucket: string, minuteLimit: number, dayBucket: string, dayLimit: number): Promise<boolean> {
     const tx = await db.raw.transaction("write");
     try {
-      await ensureCounterRow(tx, routeItemId, minuteBucket);
-      await ensureCounterRow(tx, routeItemId, dayBucket);
+      await ensureCounterRow(tx, upstreamModel, minuteBucket);
+      await ensureCounterRow(tx, upstreamModel, dayBucket);
 
       const minuteRes = await tx.execute({
-        sql: "UPDATE quota_counters SET used_req = used_req + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ? AND used_req + 1 <= ?",
-        args: [routeItemId, minuteBucket, minuteLimit]
+        sql: "UPDATE quota_counters SET used_req = used_req + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE upstream_model = ? AND bucket_key = ? AND used_req + 1 <= ?",
+        args: [upstreamModel, minuteBucket, minuteLimit]
       });
       if (Number(minuteRes?.rowsAffected ?? 0) !== 1) {
         await tx.rollback();
@@ -112,8 +112,8 @@ export function createQuotaService(db: GatewayDb) {
       }
 
       const dayRes = await tx.execute({
-        sql: "UPDATE quota_counters SET used_req = used_req + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ? AND used_req + 1 <= ?",
-        args: [routeItemId, dayBucket, dayLimit]
+        sql: "UPDATE quota_counters SET used_req = used_req + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE upstream_model = ? AND bucket_key = ? AND used_req + 1 <= ?",
+        args: [upstreamModel, dayBucket, dayLimit]
       });
       if (Number(dayRes?.rowsAffected ?? 0) !== 1) {
         await tx.rollback();
@@ -127,13 +127,13 @@ export function createQuotaService(db: GatewayDb) {
     }
   }
 
-  async function canStartTokenDay(routeItemId: number, dayBucket: string, dailyLimit: number): Promise<boolean> {
+  async function canStartTokenDay(upstreamModel: string, dayBucket: string, dailyLimit: number): Promise<boolean> {
     const tx = await db.raw.transaction("write");
     try {
-      await ensureCounterRow(tx, routeItemId, dayBucket);
+      await ensureCounterRow(tx, upstreamModel, dayBucket);
       const res = await tx.execute({
-        sql: "SELECT used_tokens FROM quota_counters WHERE route_item_id = ? AND bucket_key = ? LIMIT 1",
-        args: [routeItemId, dayBucket]
+        sql: "SELECT used_tokens FROM quota_counters WHERE upstream_model = ? AND bucket_key = ? LIMIT 1",
+        args: [upstreamModel, dayBucket]
       });
       const used = Number((res?.rows?.[0] as any)?.used_tokens ?? 0);
       const ok = Number.isFinite(used) ? used < dailyLimit : true;
@@ -144,11 +144,11 @@ export function createQuotaService(db: GatewayDb) {
     }
   }
 
-  async function chargeTokens(routeItemId: number, dayBucket: string, actual: number): Promise<void> {
-    await ensureCounterRow(db.raw, routeItemId, dayBucket);
+  async function chargeTokens(upstreamModel: string, dayBucket: string, actual: number): Promise<void> {
+    await ensureCounterRow(db.raw, upstreamModel, dayBucket);
     await db.raw.execute({
-      sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE route_item_id = ? AND bucket_key = ?",
-      args: [actual, routeItemId, dayBucket]
+      sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE upstream_model = ? AND bucket_key = ?",
+      args: [actual, upstreamModel, dayBucket]
     });
   }
 
@@ -166,7 +166,7 @@ export function createQuotaService(db: GatewayDb) {
       const minuteBucket = utcMinuteString(now);
       const dayBucket = utcDayString(now);
 
-      const ok = await consumeReqMinuteAndDay(routeItem.id, minuteBucket, cfg.reqPerMin, dayBucket, cfg.reqPerDay);
+      const ok = await consumeReqMinuteAndDay(routeItem.upstreamModel, minuteBucket, cfg.reqPerMin, dayBucket, cfg.reqPerDay);
       if (!ok) return { ok: false, reason: "req quota exceeded" };
       return { ok: true, routeItem };
     }
@@ -180,13 +180,13 @@ export function createQuotaService(db: GatewayDb) {
         return { ok: false, reason: "invalid config" };
       }
       const dayBucket = quotaDayBucket(now, cfg.resetHourUtc ?? 0);
-      const ok = await canStartTokenDay(routeItem.id, dayBucket, cfg.dailyTokenLimit);
+      const ok = await canStartTokenDay(routeItem.upstreamModel, dayBucket, cfg.dailyTokenLimit);
       if (!ok) return { ok: false, reason: "token quota exceeded" };
 
       return {
         ok: true,
         routeItem,
-        tokenDayCharge: { routeItemId: routeItem.id, dayBucket }
+        tokenDayCharge: { upstreamModel: routeItem.upstreamModel, dayBucket }
       };
     }
 
@@ -197,8 +197,8 @@ export function createQuotaService(db: GatewayDb) {
     if (!charge) return;
     const actual = usage?.total_tokens;
     if (typeof actual === "number" && Number.isFinite(actual) && actual >= 0) {
-      await chargeTokens(charge.routeItemId, charge.dayBucket, actual);
-      log.debug("token_day charged", { routeItemId: charge.routeItemId, dayBucket: charge.dayBucket, totalTokens: actual });
+      await chargeTokens(charge.upstreamModel, charge.dayBucket, actual);
+      log.debug("token_day charged", { upstreamModel: charge.upstreamModel, dayBucket: charge.dayBucket, totalTokens: actual });
     }
   }
 

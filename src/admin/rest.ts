@@ -260,17 +260,7 @@ export function registerAdminRestRoutes(app: Hono, ctx: AppContext): void {
     const exists = await getRouteById(ctx, id);
     if (!exists) return c.json({ error: { message: "route not found" } }, 404);
 
-    const tx = await ctx.db.raw.transaction("write");
-    try {
-      await tx.execute({ sql: "DELETE FROM quota_counters WHERE route_item_id = ?", args: [id] });
-      await tx.execute({ sql: "DELETE FROM route_items WHERE id = ?", args: [id] });
-      await tx.commit();
-    } catch (e) {
-      await tx.rollback();
-      throw e;
-    } finally {
-      tx.close();
-    }
+    await ctx.db.raw.execute({ sql: "DELETE FROM route_items WHERE id = ?", args: [id] });
 
     log.info("route deleted", { routeId: id });
     return c.json({ deleted: 1, routeId: id });

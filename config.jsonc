@@ -18,20 +18,16 @@
   // - load_once: insert only; if entryModel+upstreamModel exists, skip it
   "configLoadMode": "authoritative",
 
-  "routes": [
+  "upstreams": [
     {
-      "entryModel": "my-api:free",
       "upstreamModel": "z-ai/glm4.7",
       "strategyType": "req_min_day",
-      "priority": 0,
       "enabled": 1,
       "config": { "reqPerMin": 2, "reqPerDay": 10000 }
     },
     {
-      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-2-0-pro-260215",
       "strategyType": "token_day",
-      "priority": 100,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
@@ -39,10 +35,8 @@
       }
     },
     {
-      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-2-0-code-preview-260215",
       "strategyType": "token_day",
-      "priority": 95,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
@@ -50,10 +44,8 @@
       }
     },
     {
-      "entryModel": "my-api:free",
       "upstreamModel": "glm-4-7-251222",
       "strategyType": "token_day",
-      "priority": 92,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
@@ -61,10 +53,8 @@
       }
     },
     {
-      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-code-preview-251028",
       "strategyType": "token_day",
-      "priority": 90,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "5M",
@@ -72,15 +62,27 @@
       }
     },
     {
-      "entryModel": "my-api:free",
       "upstreamModel": "doubao-seed-1-8-251228",
       "strategyType": "token_day",
-      "priority": 85,
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "1M",
         "resetHourUtc": 1
       }
+    }
+  ],
+
+  "groups": [
+    {
+      "entryModel": "my-api:free",
+      "routes": [
+        { "upstreamModel": "doubao-seed-2-0-pro-260215", "priority": 100 },
+        { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 95 },
+        { "upstreamModel": "glm-4-7-251222", "priority": 92 },
+        { "upstreamModel": "doubao-seed-code-preview-251028", "priority": 90 },
+        { "upstreamModel": "doubao-seed-1-8-251228", "priority": 85 },
+        { "upstreamModel": "z-ai/glm4.7", "priority": 0 }
+      ]
     }
   ]
 }

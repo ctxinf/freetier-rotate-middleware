@@ -3,6 +3,8 @@ import fs from "node:fs";
 
 dotenv.config();
 
+export type StrategyType = "token_day" | "req_min_day";
+
 export type AppConfig = {
   port: number;
   upstreamBaseUrl: string;
@@ -18,10 +20,25 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 export type RouteConfig = {
   entryModel: string;
   upstreamModel: string;
-  strategyType: "token_day" | "req_min_day";
+  strategyType: StrategyType;
   priority: number;
   enabled: number;
   configJson: string;
+};
+
+type UpstreamPolicy = {
+  upstreamModel: string;
+  strategyType: StrategyType;
+  enabled: number;
+  configJson: string;
+};
+
+type GroupRouteRef = {
+  upstreamModel: string;
+  priority: number;
+  enabledRaw?: unknown;
+  strategyTypeRaw?: unknown;
+  configJsonRaw?: unknown;
 };
 
 function normalizeTokenDayConfigToTokens(input: any): any {
@@ -150,6 +167,203 @@ function stripTrailingCommas(source: string): string {
   return out;
 }
 
+function parseStrategyType(raw: unknown, fieldPath: string): StrategyType {
+  if (raw === "token_day" || raw === "req_min_day") return raw;
+  throw new Error(`${fieldPath} invalid strategyType: ${String(raw)}`);
+}
+
+function parseEnabled(raw: unknown, defaultValue = 1): number {
+  if (raw === undefined || raw === null || raw === "") return defaultValue === 0 ? 0 : 1;
+  return raw === 0 || raw === "0" || raw === false ? 0 : 1;
+}
+
+function parsePriority(raw: unknown, fieldPath: string, defaultValue: number): number {
+  const priority = Number(raw ?? defaultValue);
+  if (!Number.isFinite(priority)) throw new Error(`${fieldPath} invalid priority`);
+  return priority;
+}
+
+function parseConfigJson(
+  strategyType: StrategyType,
+  rawConfigJson: unknown,
+  fieldPath: string
+): string {
+  if (typeof rawConfigJson === "string") return rawConfigJson;
+  if (rawConfigJson === undefined) return "{}";
+  if (rawConfigJson === null || typeof rawConfigJson !== "object" || Array.isArray(rawConfigJson)) {
+    throw new Error(`${fieldPath} config/configJson must be object or JSON string`);
+  }
+  const normalized = strategyType === "token_day" ? normalizeTokenDayConfigToTokens(rawConfigJson) : rawConfigJson;
+  return JSON.stringify(normalized);
+}
+
+function resolveRouteRef(rawRef: any, idx: number, basePriority: number, step: number): GroupRouteRef {
+  const derivedPriority = basePriority - idx * step;
+  if (typeof rawRef === "string") {
+    return {
+      upstreamModel: rawRef,
+      priority: derivedPriority
+    };
+  }
+
+  if (!rawRef || typeof rawRef !== "object") {
+    throw new Error(`groups[] route ref at index ${idx} must be string or object`);
+  }
+
+  const upstreamModel =
+    rawRef.upstreamModel ??
+    rawRef.upstream_model ??
+    rawRef.model ??
+    rawRef.id;
+  if (typeof upstreamModel !== "string" || upstreamModel.length === 0) {
+    throw new Error(`groups[] route ref at index ${idx} missing upstreamModel`);
+  }
+
+  return {
+    upstreamModel,
+    priority: parsePriority(rawRef.priority ?? rawRef.prio, `groups[] route ref at index ${idx}`, derivedPriority),
+    enabledRaw: rawRef.enabled,
+    strategyTypeRaw: rawRef.strategyType ?? rawRef.strategy_type,
+    configJsonRaw: rawRef.configJson ?? rawRef.config_json ?? rawRef.config
+  };
+}
+
+function parseUpstreamPolicies(raw: unknown): Map<string, UpstreamPolicy> {
+  const byModel = new Map<string, UpstreamPolicy>();
+  if (!raw) return byModel;
+
+  const pushOne = (item: any, fieldPath: string, modelOverride?: string) => {
+    const upstreamModel =
+      modelOverride ??
+      item?.upstreamModel ??
+      item?.upstream_model ??
+      item?.model ??
+      item?.id;
+    if (typeof upstreamModel !== "string" || upstreamModel.length === 0) {
+      throw new Error(`${fieldPath} missing upstreamModel`);
+    }
+
+    const strategyType = parseStrategyType(item?.strategyType ?? item?.strategy_type, fieldPath);
+    const configJson = parseConfigJson(
+      strategyType,
+      item?.configJson ?? item?.config_json ?? item?.config,
+      fieldPath
+    );
+    const enabled = parseEnabled(item?.enabled, 1);
+
+    byModel.set(upstreamModel, {
+      upstreamModel,
+      strategyType,
+      configJson,
+      enabled
+    });
+  };
+
+  if (Array.isArray(raw)) {
+    raw.forEach((item, idx) => pushOne(item, `upstreams[${idx}]`));
+    return byModel;
+  }
+
+  if (typeof raw === "object") {
+    for (const [model, item] of Object.entries(raw as Record<string, any>)) {
+      pushOne(item, `upstreams.${model}`, model);
+    }
+    return byModel;
+  }
+
+  throw new Error("upstreams must be array or object");
+}
+
+function parseFlatRoutes(raw: unknown, upstreamPolicies: Map<string, UpstreamPolicy>): RouteConfig[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((rawItem: any, idx: number) => {
+    const entryModel =
+      rawItem?.entryModel ?? rawItem?.publicModel ?? rawItem?.entry_model ?? rawItem?.public_model;
+    const upstreamModel = rawItem?.upstreamModel ?? rawItem?.upstream_model;
+    if (typeof entryModel !== "string" || entryModel.length === 0) {
+      throw new Error(`routes[${idx}] missing entryModel`);
+    }
+    if (typeof upstreamModel !== "string" || upstreamModel.length === 0) {
+      throw new Error(`routes[${idx}] missing upstreamModel`);
+    }
+
+    const upstreamPolicy = upstreamPolicies.get(upstreamModel);
+    const strategyTypeRaw = rawItem?.strategyType ?? rawItem?.strategy_type ?? upstreamPolicy?.strategyType;
+    const strategyType = parseStrategyType(strategyTypeRaw, `routes[${idx}]`);
+
+    const priority = parsePriority(rawItem?.priority ?? rawItem?.prio, `routes[${idx}]`, 0);
+    const routeEnabled = parseEnabled(rawItem?.enabled, upstreamPolicy?.enabled ?? 1);
+    const enabled = upstreamPolicy?.enabled === 0 ? 0 : routeEnabled;
+
+    let configJson: string;
+    if (rawItem?.configJson !== undefined || rawItem?.config_json !== undefined || rawItem?.config !== undefined) {
+      configJson = parseConfigJson(
+        strategyType,
+        rawItem?.configJson ?? rawItem?.config_json ?? rawItem?.config,
+        `routes[${idx}]`
+      );
+    } else if (upstreamPolicy) {
+      configJson = upstreamPolicy.configJson;
+    } else {
+      throw new Error(`routes[${idx}] missing config/configJson and no upstream policy found for ${upstreamModel}`);
+    }
+
+    return { entryModel, upstreamModel, strategyType, priority, enabled, configJson };
+  });
+}
+
+function parseGroupRoutes(raw: unknown, upstreamPolicies: Map<string, UpstreamPolicy>): RouteConfig[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RouteConfig[] = [];
+
+  raw.forEach((group, groupIdx) => {
+    const entryModel = group?.entryModel ?? group?.entry;
+    if (typeof entryModel !== "string" || entryModel.length === 0) {
+      throw new Error(`groups[${groupIdx}] missing entryModel`);
+    }
+
+    const refsRaw = group?.routes ?? group?.targets ?? group?.upstreams ?? group?.upstreamModels;
+    if (!Array.isArray(refsRaw)) {
+      throw new Error(`groups[${groupIdx}] missing routes/upstreams array`);
+    }
+
+    const basePriority = parsePriority(group?.priorityBase, `groups[${groupIdx}]`, 1000);
+    const step = parsePriority(group?.priorityStep, `groups[${groupIdx}]`, 10);
+
+    refsRaw.forEach((rawRef, refIdx) => {
+      const ref = resolveRouteRef(rawRef, refIdx, basePriority, step);
+      const upstreamPolicy = upstreamPolicies.get(ref.upstreamModel);
+      const strategyTypeRaw = ref.strategyTypeRaw ?? upstreamPolicy?.strategyType;
+      const strategyType = parseStrategyType(strategyTypeRaw, `groups[${groupIdx}].routes[${refIdx}]`);
+
+      const routeEnabled = parseEnabled(ref.enabledRaw, upstreamPolicy?.enabled ?? 1);
+      const enabled = upstreamPolicy?.enabled === 0 ? 0 : routeEnabled;
+
+      let configJson: string;
+      if (ref.configJsonRaw !== undefined) {
+        configJson = parseConfigJson(strategyType, ref.configJsonRaw, `groups[${groupIdx}].routes[${refIdx}]`);
+      } else if (upstreamPolicy) {
+        configJson = upstreamPolicy.configJson;
+      } else {
+        throw new Error(
+          `groups[${groupIdx}].routes[${refIdx}] missing config/configJson and no upstream policy found for ${ref.upstreamModel}`
+        );
+      }
+
+      out.push({
+        entryModel,
+        upstreamModel: ref.upstreamModel,
+        strategyType,
+        priority: ref.priority,
+        enabled,
+        configJson
+      });
+    });
+  });
+
+  return out;
+}
+
 function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
   let raw: string;
   try {
@@ -174,51 +388,19 @@ function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
 
     const mode = obj.configLoadMode ?? obj.routeItemsMode;
     if (mode === "authoritative" || mode === "load_once") fileConfig.configLoadMode = mode;
+    if (mode === "overwrite") fileConfig.configLoadMode = "authoritative";
     if (mode === "merge") fileConfig.configLoadMode = "load_once";
 
     if (obj.logLevel === "debug" || obj.logLevel === "info" || obj.logLevel === "warn" || obj.logLevel === "error") {
       fileConfig.logLevel = obj.logLevel;
     }
 
-    const routes = obj.routes ?? obj.routeItems;
-    if (Array.isArray(routes)) {
-      fileConfig.routes = routes.map((rawItem: any, idx: number) => {
-        const entryModel =
-          rawItem?.entryModel ?? rawItem?.publicModel ?? rawItem?.entry_model ?? rawItem?.public_model;
-        const upstreamModel = rawItem?.upstreamModel ?? rawItem?.upstream_model;
-        const strategyType = rawItem?.strategyType ?? rawItem?.strategy_type;
-        const priorityRaw = rawItem?.priority ?? rawItem?.prio;
-        const enabledRaw = rawItem?.enabled;
-        const configJsonRaw = rawItem?.configJson ?? rawItem?.config_json ?? rawItem?.config;
-
-        if (typeof entryModel !== "string" || entryModel.length === 0) {
-          throw new Error(`routes[${idx}] missing entryModel`);
-        }
-        if (typeof upstreamModel !== "string" || upstreamModel.length === 0) {
-          throw new Error(`routes[${idx}] missing upstreamModel`);
-        }
-        if (strategyType !== "token_day" && strategyType !== "req_min_day") {
-          throw new Error(`routes[${idx}] invalid strategyType: ${String(strategyType)}`);
-        }
-
-        const priority = Number(priorityRaw ?? 0);
-        if (!Number.isFinite(priority)) throw new Error(`routes[${idx}] invalid priority`);
-
-        const enabled = enabledRaw === 0 || enabledRaw === "0" ? 0 : 1;
-
-        let configJson = "{}";
-        if (typeof configJsonRaw === "string") {
-          configJson = configJsonRaw;
-        } else if (configJsonRaw !== undefined) {
-          const normalized =
-            strategyType === "token_day"
-              ? normalizeTokenDayConfigToTokens(configJsonRaw)
-              : configJsonRaw;
-          configJson = JSON.stringify(normalized);
-        }
-
-        return { entryModel, upstreamModel, strategyType, priority, enabled, configJson };
-      });
+    const upstreamPolicies = parseUpstreamPolicies(obj.upstreams);
+    const flatRoutes = parseFlatRoutes(obj.routes ?? obj.routeItems, upstreamPolicies);
+    const groupRoutes = parseGroupRoutes(obj.groups, upstreamPolicies);
+    const combinedRoutes = [...flatRoutes, ...groupRoutes];
+    if (combinedRoutes.length > 0) {
+      fileConfig.routes = combinedRoutes;
     }
   }
 

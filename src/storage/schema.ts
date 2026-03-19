@@ -14,6 +14,7 @@ export const routeItems = sqliteTable("route_items", {
 export const requestLogs = sqliteTable("request_logs", {
   requestId: text("request_id").primaryKey(),
   routeItemId: integer("route_item_id"),
+  upstreamModel: text("upstream_model"),
   status: integer("status"),
   promptTokens: integer("prompt_tokens"),
   completionTokens: integer("completion_tokens"),
