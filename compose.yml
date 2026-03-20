@@ -1,32 +1,12 @@
 services:
   gateway:
-    build:
-      context: .
+    image: ghcr.io/ctxinf/freetier-rotate-middleware:latest
     ports:
       - "3001:3001"
     volumes:
+      - ./config.jsonc:/app/config.jsonc:ro
       - gateway-data:/app/data
-      # Override config at runtime (optional):
-      # - ./config.jsonc:/app/config.jsonc:ro
-    # You can still override anything via env (optional):
-    # environment:
-    #   UPSTREAM_BASE_URL: "https://your-upstream.example"
-    #   PORT: "3001"
-    #   DATABASE_PATH: "./data/gateway.sqlite"
-    #   CONFIG_PATH: "./config.jsonc"
     restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3001/_health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 3s
-      retries: 5
 
 volumes:
   gateway-data:
-
