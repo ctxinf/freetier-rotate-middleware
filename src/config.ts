@@ -7,6 +7,7 @@ export type StrategyType = "token_day" | "req_min_day";
 
 export type AppConfig = {
   port: number;
+  basePath: string;
   upstreamBaseUrl: string;
   databasePath: string;
   routes?: RouteConfig[];
@@ -165,6 +166,32 @@ function stripTrailingCommas(source: string): string {
   }
 
   return out;
+}
+
+function normalizeBasePath(raw: unknown): string {
+  const value = String(raw ?? "").trim();
+  if (!value) return "/";
+
+  let candidate = value;
+  try {
+    if (/^https?:\/\//i.test(value)) {
+      candidate = new URL(value).pathname;
+    }
+  } catch {
+    throw new Error(`Invalid basePath/baseUrl: ${value}`);
+  }
+
+  if (candidate.includes("?") || candidate.includes("#")) {
+    throw new Error("basePath/baseUrl must not include query or hash");
+  }
+  if (/[<>"'`\s]/.test(candidate)) {
+    throw new Error("basePath/baseUrl contains invalid characters");
+  }
+
+  if (!candidate.startsWith("/")) candidate = `/${candidate}`;
+  candidate = candidate.replace(/\/{2,}/g, "/");
+  candidate = candidate.replace(/\/+$/, "");
+  return candidate === "" ? "/" : candidate;
 }
 
 function parseStrategyType(raw: unknown, fieldPath: string): StrategyType {
@@ -383,6 +410,9 @@ function loadJsonFileConfig(configPath: string): Partial<AppConfig> {
   const fileConfig: Partial<AppConfig> = {};
   if (obj && typeof obj === "object") {
     if (obj.port !== undefined) fileConfig.port = Number(obj.port);
+    if (typeof obj.basePath === "string" || typeof obj.baseUrl === "string") {
+      fileConfig.basePath = normalizeBasePath(obj.basePath ?? obj.baseUrl);
+    }
     if (typeof obj.upstreamBaseUrl === "string") fileConfig.upstreamBaseUrl = obj.upstreamBaseUrl;
     if (typeof obj.databasePath === "string") fileConfig.databasePath = obj.databasePath;
 
@@ -413,6 +443,7 @@ export function loadConfig(): AppConfig {
 
   const port = Number(process.env.PORT ?? fileConfig.port ?? "8787");
   if (!Number.isFinite(port) || port <= 0) throw new Error("Invalid PORT");
+  const basePath = normalizeBasePath(process.env.BASE_PATH ?? fileConfig.basePath ?? "/");
 
   const upstreamBaseUrl = process.env.UPSTREAM_BASE_URL ?? fileConfig.upstreamBaseUrl;
   if (!upstreamBaseUrl) throw new Error("Missing UPSTREAM_BASE_URL (or set it in CONFIG_PATH JSON)");
@@ -423,7 +454,7 @@ export function loadConfig(): AppConfig {
     throw new Error("Invalid LOG_LEVEL, must be one of: debug/info/warn/error");
   }
 
-  const cfg: AppConfig = { port, upstreamBaseUrl, databasePath, logLevel: logLevelRaw };
+  const cfg: AppConfig = { port, basePath, upstreamBaseUrl, databasePath, logLevel: logLevelRaw };
   if (fileConfig.routes && fileConfig.routes.length > 0) cfg.routes = fileConfig.routes;
   if (fileConfig.configLoadMode) cfg.configLoadMode = fileConfig.configLoadMode;
   return cfg;

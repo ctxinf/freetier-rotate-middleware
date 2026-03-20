@@ -185,6 +185,7 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
     now: now.toISOString(),
     config: {
       port: config.port,
+      basePath: config.basePath,
       upstreamBaseUrl: app.runtime.getUpstreamBaseUrl(),
       databasePath: config.databasePath
     },
@@ -285,6 +286,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     <h2>config</h2>
     <ul>
       <li>port: ${escapeHtml(String(payload.config.port))}</li>
+      <li>basePath: ${escapeHtml(payload.config.basePath)}</li>
       <li>upstreamBaseUrl: ${escapeHtml(payload.config.upstreamBaseUrl)}</li>
       <li>databasePath: ${escapeHtml(payload.config.databasePath)}</li>
     </ul>

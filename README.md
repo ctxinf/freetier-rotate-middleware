@@ -3,7 +3,7 @@
 OpenAI Chat Completions compatible gateway with custom routing + quota strategies.
 
 ## Setup
-1. Copy `.env.example` to `.env` and set `UPSTREAM_BASE_URL`.
+1. Copy `.env.example` to `.env` and set `UPSTREAM_BASE_URL` (optional `BASE_PATH`).
 2. Install deps and run dev server:
    - `npm i`
    - `npm run dev`
@@ -24,6 +24,10 @@ npm run db:seed -- doubao-seed-xxx doubao-seed-xxx token_day 100 '{"dailyTokenLi
 ```
 
 ## API
+All paths below are under `BASE_PATH`/`basePath` (default `/`).
+- `GET /` welcome page
+- `GET /docs` Swagger Doc UI
+- `GET /openapi.json` OpenAPI spec
 - `POST /v1/chat/completions` proxies to upstream `/v1/chat/completions`
 - `GET /v1/models` lists enabled models (OpenAI-compatible)
 - `GET /_health`
@@ -42,6 +46,10 @@ npm run db:seed -- doubao-seed-xxx doubao-seed-xxx token_day 100 '{"dailyTokenLi
 - `PUT /admin/settings/upstream-base-url`
 
 ## Config Notes
+- `basePath`:
+  - Supports path prefix via config file (`basePath`) or env (`BASE_PATH`).
+  - Also accepts URL style value and will use its pathname (for compatibility with `baseUrl` style input).
+  - Examples: `/`, `/gateway`, `/api/gw`.
 - Recommend using `upstreams + groups`:
   - `upstreams`: policy bound to `upstreamModel` (quota计数/计费按 upstream 维度共享)。
   - `groups`: define `entryModel -> [{ upstreamModel, priority, ... }]`.

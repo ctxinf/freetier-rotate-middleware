@@ -7,6 +7,7 @@ import { createAppContext } from "./svc/context.js";
 import { chatCompletionsHandler } from "./v1/chat-completions.js";
 import { registerStatusRoutes } from "./pages/page_status.js";
 import { modelsHandler } from "./v1/models.js";
+import { registerHomeAndDocsRoutes } from "./pages/page_home.js";
 
 const config = loadConfig();
 await initLogging(config.logLevel ?? "info");
@@ -14,6 +15,7 @@ const log = createLogger("server");
 const ctx = await createAppContext(config);
 
 const app = new Hono();
+const baseApp = config.basePath === "/" ? app : app.basePath(config.basePath);
 
 app.use("*", async (c, next) => {
   const started = Date.now();
@@ -35,20 +37,26 @@ app.onError((err, c) => {
   return c.json({ error: { message: "Internal Server Error" } }, 500);
 });
 
-app.get("/_health", (c) =>
+baseApp.get("/_health", (c) =>
   c.json({ ok: true, now: new Date().toISOString() })
 );
 
-registerStatusRoutes(app, ctx, config);
-registerAdminRestRoutes(app, ctx);
+if (config.basePath !== "/") {
+  app.get("/", (c) => c.redirect(config.basePath, 302));
+}
 
-app.get("/models", (c) => modelsHandler(c, ctx));
-app.get("/v1/models", (c) => modelsHandler(c, ctx));
-app.post("/v1/chat/completions", (c) => chatCompletionsHandler(c, ctx));
+registerHomeAndDocsRoutes(baseApp, config);
+registerStatusRoutes(baseApp, ctx, config);
+registerAdminRestRoutes(baseApp, ctx);
+
+baseApp.get("/models", (c) => modelsHandler(c, ctx));
+baseApp.get("/v1/models", (c) => modelsHandler(c, ctx));
+baseApp.post("/v1/chat/completions", (c) => chatCompletionsHandler(c, ctx));
 
 serve({ fetch: app.fetch, port: config.port });
 log.info("gateway listening", {
   port: config.port,
+  basePath: config.basePath,
   configLoadMode: config.configLoadMode ?? "authoritative",
   logLevel: config.logLevel ?? "info"
 });

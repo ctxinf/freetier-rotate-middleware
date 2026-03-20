@@ -2,6 +2,10 @@
   // Service port (can still be overridden by env PORT)
   "port": 3000,
 
+  // Request path prefix (can still be overridden by env BASE_PATH)
+  // Examples: "/", "/gateway", "/api/gw"
+  "basePath": "/",
+
   // Upstream OpenAI-compatible base URL (can still be overridden by env UPSTREAM_BASE_URL)
   "upstreamBaseUrl": "http://localhost:8080",
 
