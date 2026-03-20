@@ -21,6 +21,7 @@ app.use("*", async (c, next) => {
   const started = Date.now();
   const reqId = c.req.header("x-request-id") ?? "-";
   const reqLog = log.child({ requestId: reqId, method: c.req.method, path: c.req.path });
+  reqLog.info(`${c.req.method} ${c.req.path} started`);
   try {
     await next();
     const seconds = ((Date.now() - started) / 1000).toFixed(3);

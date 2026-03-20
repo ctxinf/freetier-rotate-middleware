@@ -1,67 +1,150 @@
 {
-  // Service port (can still be overridden by env PORT)
-  "port": 3000,
+  // 服务监听端口。
+  // 可被环境变量 PORT 覆盖。
+  "port": 3001,
 
-  // Request path prefix (can still be overridden by env BASE_PATH)
-  // Examples: "/", "/gateway", "/api/gw"
+  // API 路径前缀。
+  // 常见取值："/"、"/gateway"、"/api/gw"。
+  // 可被环境变量 BASE_PATH 覆盖。
   "basePath": "/",
 
-  // Upstream OpenAI-compatible base URL (can still be overridden by env UPSTREAM_BASE_URL)
-  "upstreamBaseUrl": "http://localhost:8080",
+  // 上游 OpenAI 兼容服务的 base URL。
+  // 网关会把请求转发到：{upstreamBaseUrl}/v1/chat/completions
+  // 可被环境变量 UPSTREAM_BASE_URL 覆盖。
+  "upstreamBaseUrl": "http://ubuntu.local.ai:3000",
 
-  // Authorization header will be transparently forwarded to upstream.
+  // 说明：Authorization 请求头会透明转发到上游。
+  // 本项目不管理上游密钥，不管理 provider。
 
-  // SQLite path (can still be overridden by env DATABASE_PATH)
+  // SQLite 数据库路径。
+  // 可被环境变量 DATABASE_PATH 覆盖。
   "databasePath": "./data/gateway.sqlite",
 
-  // Log level (can still be overridden by env LOG_LEVEL)
+  // 日志级别：debug / info / warn / error
+  // 可被环境变量 LOG_LEVEL 覆盖。
   "logLevel": "info",
 
-  // How to sync routes into sqlite on startup:
-  // - authoritative: insert/update by entryModel+upstreamModel, and delete rows not present in config
-  // - load_once: insert only; if entryModel+upstreamModel exists, skip it
+  // 启动时配置同步模式（基于 entryModel + upstreamModel 唯一键）：
+  // authoritative: 完全覆盖数据库中的 route_items（增/改/删）
+  // load_once: 仅加载一次，数据库里已存在的路由会跳过
   "configLoadMode": "authoritative",
 
-  // upstream policy: 配额和计费绑定在 upstreamModel 维度
+  // 上游模型池（策略定义）。
+  // - strategyType=token_day: 按天 Token 限额
+  // - strategyType=req_min_day: 每分钟请求 + 每天请求双限额
   "upstreams": [
     {
-      "upstreamModel": "codex-v1",
+      "upstreamModel": "z-ai/glm4.7",
       "strategyType": "req_min_day",
       "enabled": 1,
-      "config": { "reqPerMin": 30, "reqPerDay": 1000 }
+      "config": { "reqPerMin": 2, "reqPerDay": 10000 }
     },
     {
-      "upstreamModel": "claude-v1",
-      "strategyType": "req_min_day",
-      "enabled": 1,
-      "config": { "reqPerMin": 20, "reqPerDay": 500 }
-    },
-    {
-      "upstreamModel": "gemini-v1",
+      "upstreamModel": "doubao-seed-2-0-pro-260215",
       "strategyType": "token_day",
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 8
+        "resetHourUtc": 1
+      }
+    },
+    {
+      "upstreamModel": "doubao-seed-2-0-code-preview-260215",
+      "strategyType": "token_day",
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
+        "resetHourUtc": 1
+      }
+    },
+    {
+      "upstreamModel": "doubao-seed-2-0-mini-260215",
+      "strategyType": "token_day",
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
+        "resetHourUtc": 1
+      }
+    },
+    {
+      "upstreamModel": "doubao-seed-2-0-lite-260215",
+      "strategyType": "token_day",
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
+        "resetHourUtc": 1
+      }
+    },
+    {
+      "upstreamModel": "glm-4-7-251222",
+      "strategyType": "token_day",
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "2M",
+        "resetHourUtc": 1
+      }
+    },
+    {
+      "upstreamModel": "doubao-seed-code-preview-251028",
+      "strategyType": "token_day",
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "5M",
+        "resetHourUtc": 1
+      }
+    },
+    {
+      "upstreamModel": "doubao-seed-1-8-251228",
+      "strategyType": "token_day",
+      "enabled": 1,
+      "config": {
+        "dailyTokenLimit": "1M",
+        "resetHourUtc": 1
       }
     }
   ],
 
-  // entry -> routes 绑定
-  // 同优先级会 rotate 轮询；不同优先级仍是高优先级优先
+  // 路由组：定义 entryModel -> upstreamModel 列表。
+  // 调度规则：
+  // 1) 先按 priority 从高到低选择
+  // 2) 同优先级按 rotate 轮询
+  // 3) 命中不可用（配额耗尽/上游失败）会自动尝试下一个
   "groups": [
     {
-      "entryModel": "code",
+      "entryModel": "my-api:free",
       "routes": [
-        { "upstreamModel": "codex-v1", "priority": 100 },
-        { "upstreamModel": "claude-v1", "priority": 100 },
-        { "upstreamModel": "gemini-v1", "priority": 90 }
+        { "upstreamModel": "doubao-seed-2-0-pro-260215", "priority": 100 },
+        { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 95 },
+        { "upstreamModel": "glm-4-7-251222", "priority": 92 },
+        { "upstreamModel": "doubao-seed-code-preview-251028", "priority": 90 },
+        { "upstreamModel": "doubao-seed-1-8-251228", "priority": 85 },
+        { "upstreamModel": "z-ai/glm4.7", "priority": 0 }
       ]
     },
     {
-      "entryModel": "chat",
+      "entryModel": "group-code",
       "routes": [
-        { "upstreamModel": "gemini-v1", "priority": 100 }
+        { "upstreamModel": "z-ai/glm4.7", "priority": 100 },
+        { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 95 },
+        { "upstreamModel": "doubao-seed-code-preview-251028", "priority": 90 },
+        { "upstreamModel": "glm-4-7-251222", "priority": 85 }
+      ]
+    },
+    {
+      "entryModel": "group-fast",
+      "routes": [
+        { "upstreamModel": "doubao-seed-2-0-mini-260215", "priority": 100 },
+        { "upstreamModel": "doubao-seed-2-0-lite-260215", "priority": 95 },
+        { "upstreamModel": "doubao-seed-1-8-251228", "priority": 90 }
+      ]
+    },
+    {
+      "entryModel": "group-rotate",
+      "routes": [
+        { "upstreamModel": "doubao-seed-2-0-pro-260215", "priority": 100 },
+        { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 100 },
+        { "upstreamModel": "doubao-seed-code-preview-251028", "priority": 100 },
+        { "upstreamModel": "doubao-seed-1-8-251228", "priority": 100 }
       ]
     }
   ]

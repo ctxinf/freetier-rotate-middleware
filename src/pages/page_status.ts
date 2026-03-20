@@ -269,7 +269,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>my-ai-gateway status</title>
+    <title>freetier-rotate-middleware status</title>
     <style>
       body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
       .topnav { margin: 0 0 10px 0; }
@@ -287,7 +287,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
   </head>
   <body>
     <div class="topnav"><a href="${escapeHtml(homePath)}">Home</a></div>
-    <h1>my-ai-gateway status</h1>
+    <h1>freetier-rotate-middleware status</h1>
     <div class="meta"><span class="small">GET /_status/json for raw JSON</span></div>
 
     <h2>config</h2>

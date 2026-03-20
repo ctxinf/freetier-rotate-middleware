@@ -7,7 +7,7 @@ RUN npm ci --no-audit --no-fund
 
 COPY tsconfig.json ./
 COPY src ./src
-COPY scripts ./scripts
+COPY script ./script
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime
@@ -24,5 +24,5 @@ COPY --from=build /app/dist ./dist
 COPY config.jsonc ./config.jsonc
 
 USER node
-EXPOSE 3000
+EXPOSE 3001
 CMD ["node", "dist/src/server.js"]

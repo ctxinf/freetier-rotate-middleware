@@ -27,7 +27,7 @@ export async function modelsHandler(c: Context, app: AppContext): Promise<Respon
       id,
       object: "model" as const,
       created,
-      owned_by: "my-ai-gateway"
+      owned_by: "freetier-rotate-middleware"
     }));
 
   const res: OpenAIListModelsResponse = { object: "list", data };

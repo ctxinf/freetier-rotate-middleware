@@ -21,7 +21,7 @@ function buildOpenApiSpec(basePath: string): Record<string, unknown> {
   return {
     openapi: "3.0.3",
     info: {
-      title: "my-ai-gateway API",
+      title: "freetier-rotate-middleware API",
       version: "0.1.0",
       description: "OpenAI-compatible gateway with custom route and quota strategies."
     },
@@ -118,7 +118,7 @@ export function registerHomeAndDocsRoutes(app: Hono, config: AppConfig, ctx: App
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>my-ai-gateway</title>
+    <title>freetier-rotate-middleware</title>
     <style>
       body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; line-height: 1.5; color: #1d1d1f; }
       h1 { margin: 0 0 12px 0; font-size: 20px; }
@@ -129,7 +129,7 @@ export function registerHomeAndDocsRoutes(app: Hono, config: AppConfig, ctx: App
     </style>
   </head>
   <body>
-    <h1>[my-ai-gateway]</h1>
+    <h1>[freetier-rotate-middleware]</h1>
     <ul>
       <li>API docs: <a href="${docsPathEscaped}">${docsPathEscaped}</a></li>
       <li>Status page: <a href="${statusPathEscaped}">${statusPathEscaped}</a></li>
@@ -155,7 +155,7 @@ export function registerHomeAndDocsRoutes(app: Hono, config: AppConfig, ctx: App
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>my-ai-gateway docs</title>
+    <title>freetier-rotate-middleware docs</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
     <style>
       body { margin: 0; background: #fafafa; }
