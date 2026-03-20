@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import type { AppConfig } from "../config.js";
+import type { AppContext } from "../svc/context.js";
 
 function escapeHtml(input: string): string {
   return input
@@ -88,18 +89,30 @@ function buildOpenApiSpec(basePath: string): Record<string, unknown> {
   };
 }
 
-export function registerHomeAndDocsRoutes(app: Hono, config: AppConfig): void {
-  app.get("/", (c) => {
+async function listEntryModels(ctx: AppContext): Promise<string[]> {
+  const res = await ctx.db.raw.execute(
+    "SELECT DISTINCT public_model AS entryModel FROM route_items ORDER BY public_model ASC"
+  );
+  return ((res.rows as any[]) ?? [])
+    .map((row) => String(row.entryModel ?? "").trim())
+    .filter((v) => v.length > 0);
+}
+
+export function registerHomeAndDocsRoutes(app: Hono, config: AppConfig, ctx: AppContext): void {
+  app.get("/", async (c) => {
     const docsPath = withBasePath(config.basePath, "/docs");
     const statusPath = withBasePath(config.basePath, "/_status");
     const chatPath = withBasePath(config.basePath, "/v1/chat/completions");
     const modelsPath = withBasePath(config.basePath, "/v1/models");
+    const entryModels = await listEntryModels(ctx);
     const docsPathEscaped = escapeHtml(docsPath);
     const statusPathEscaped = escapeHtml(statusPath);
     const chatPathEscaped = escapeHtml(chatPath);
     const modelsPathEscaped = escapeHtml(modelsPath);
-    const basePathEscaped = escapeHtml(config.basePath);
-
+    const entryModelsHtml =
+      entryModels.length === 0
+        ? "<li>(none)</li>"
+        : entryModels.map((m) => `<li><code>${escapeHtml(m)}</code></li>`).join("");
     const body = `<!doctype html>
 <html>
   <head>
@@ -108,25 +121,24 @@ export function registerHomeAndDocsRoutes(app: Hono, config: AppConfig): void {
     <title>my-ai-gateway</title>
     <style>
       body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; line-height: 1.5; color: #1d1d1f; }
-      h1 { margin: 0 0 8px 0; }
-      p { margin: 0 0 12px 0; max-width: 880px; }
-      .hint { color: #555; font-size: 14px; }
-      ul { margin: 12px 0 0 18px; }
+      h1 { margin: 0 0 12px 0; font-size: 20px; }
+      ul { margin: 0 0 0 18px; }
+      li { margin: 6px 0; }
       code { background: #f4f4f5; padding: 2px 5px; border-radius: 4px; }
+      h2 { margin: 16px 0 8px 0; font-size: 16px; }
     </style>
   </head>
   <body>
-    <h1>Welcome to my-ai-gateway</h1>
-    <p>
-      This gateway provides an OpenAI-compatible Chat Completions entrypoint with customizable model routing,
-      quota/usage controls, and admin APIs for runtime operations.
-    </p>
-    <p class="hint">Current basePath: <code>${basePathEscaped}</code></p>
+    <h1>[my-ai-gateway]</h1>
     <ul>
       <li>API docs: <a href="${docsPathEscaped}">${docsPathEscaped}</a></li>
       <li>Status page: <a href="${statusPathEscaped}">${statusPathEscaped}</a></li>
       <li>Models API: <code>GET ${modelsPathEscaped}</code></li>
       <li>Chat API: <code>POST ${chatPathEscaped}</code></li>
+    </ul>
+    <h2>models</h2>
+    <ul>
+      ${entryModelsHtml}
     </ul>
   </body>
 </html>`;

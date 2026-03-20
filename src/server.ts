@@ -45,7 +45,7 @@ if (config.basePath !== "/") {
   app.get("/", (c) => c.redirect(config.basePath, 302));
 }
 
-registerHomeAndDocsRoutes(baseApp, config);
+registerHomeAndDocsRoutes(baseApp, config, ctx);
 registerStatusRoutes(baseApp, ctx, config);
 registerAdminRestRoutes(baseApp, ctx);
 

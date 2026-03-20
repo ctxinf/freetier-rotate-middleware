@@ -46,7 +46,12 @@ function formatTokensM(n: unknown): string {
   return `${(v / 1_000_000).toFixed(3)}M`;
 }
 
-function renderTable(headers: string[], rows: Array<Array<string | number | null | undefined>>): string {
+function renderTable(
+  headers: string[],
+  rows: Array<Array<string | number | null | undefined>>,
+  options?: { fitWidth?: boolean }
+): string {
+  const fitClass = options?.fitWidth ? "fit-width" : "";
   const thead = `<thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>`;
   const tbody = `<tbody>${rows
     .map(
@@ -56,7 +61,7 @@ function renderTable(headers: string[], rows: Array<Array<string | number | null
           .join("")}</tr>`
     )
     .join("")}</tbody>`;
-  return `<table>${thead}${tbody}</table>`;
+  return `<table class="${fitClass}">${thead}${tbody}</table>`;
 }
 
 async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date) {
@@ -166,7 +171,7 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
         const day = sample.counters?.day;
         const cfg = sample.parsedConfig ?? {};
         bucket = `${sample.buckets?.dayBucket ?? "-"} (reset@${sample.buckets?.resetHourUtc ?? 0}hZ)`;
-        usage = `tok: used ${formatTokensM(day?.used_tokens ?? 0)}, limit ${formatTokensM(cfg.dailyTokenLimit)}`;
+        usage = `token: ${formatTokensM(day?.used_tokens ?? 0)}/${formatTokensM(cfg.dailyTokenLimit)}`;
       }
       return {
         upstreamModel: u.upstreamModel,
@@ -221,7 +226,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
       } else if (ri.strategyType === "token_day") {
         const day = ri.counters?.day;
         const cfg = ri.parsedConfig ?? {};
-        usage = `tok: used ${formatTokensM(day?.used_tokens ?? 0)}, limit ${formatTokensM(cfg.dailyTokenLimit)}`;
+        usage = `token: ${formatTokensM(day?.used_tokens ?? 0)}/${formatTokensM(cfg.dailyTokenLimit)}`;
       }
 
       const entryModel = String(ri.entryModel);
@@ -232,19 +237,17 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     const routeGroupsHtml = Array.from(routeGroups.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(
-        ([entryModel, rows]) => `<h3>${escapeHtml(entryModel)}</h3>${renderTable(
-          ["en", "upstream_model", "strategy", "prio", "usage"],
-          rows
+        ([entryModel, rows]) => `<h3>entry_model: ${escapeHtml(entryModel)}</h3>${renderTable(
+          ["enabled", "upstream_model", "strategy", "priority", "usage"],
+          rows,
+          { fitWidth: true }
         )}`
       )
       .join("");
 
     const upstreamRows: Array<Array<string | number | null | undefined>> = (payload.upstreams as any[]).map((u) => [
-      `${u.enabledCount}/${u.routeCount}`,
       u.upstreamModel,
-      u.strategyType,
-      u.priorityRange,
-      u.bucket,
+      `${u.enabledCount}/${u.routeCount}`,
       u.usage
     ]);
 
@@ -259,6 +262,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
         r.latency_ms,
         r.request_id
       ]);
+    const homePath = payload.config.basePath === "/" ? "/" : payload.config.basePath;
 
     const body = `<!doctype html>
 <html>
@@ -268,9 +272,11 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     <title>my-ai-gateway status</title>
     <style>
       body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
+      .topnav { margin: 0 0 10px 0; }
       h1, h2 { margin: 0 0 12px 0; }
       .meta { color: #444; margin-bottom: 16px; }
       table { border-collapse: collapse; width: 100%; margin: 8px 0 16px 0; }
+      table.fit-width { width: auto; max-width: 100%; display: inline-table; }
       th, td { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; }
       th { background: #f6f6f6; text-align: left; position: sticky; top: 0; }
       td { word-break: break-word; }
@@ -280,8 +286,9 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     </style>
   </head>
   <body>
+    <div class="topnav"><a href="${escapeHtml(homePath)}">Home</a></div>
     <h1>my-ai-gateway status</h1>
-    <div class="meta">now: ${escapeHtml(payload.now)} · <span class="small">GET /_status/json for raw JSON</span></div>
+    <div class="meta"><span class="small">GET /_status/json for raw JSON</span></div>
 
     <h2>config</h2>
     <ul>
@@ -293,8 +300,9 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
 
     <h2>upstreams</h2>
     ${renderTable(
-      ["en/routes", "upstream_model", "strategy", "prio(max..min)", "bucket", "usage"],
-      upstreamRows
+      ["upstream_model", "routes(enabled/all)", "usage"],
+      upstreamRows,
+      { fitWidth: true }
     )}
 
     <h2>route_items (grouped by entry_model)</h2>
