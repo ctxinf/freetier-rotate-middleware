@@ -4,13 +4,33 @@ type SseEvent = {
   data: string[];
 };
 
-export async function collectUsageFromSse(body: ReadableStream<Uint8Array>): Promise<Usage | undefined> {
+type CollectUsageFromSseOptions = {
+  onFirstDataEvent?: () => void;
+};
+
+export async function collectUsageFromSse(
+  body: ReadableStream<Uint8Array>,
+  options: CollectUsageFromSseOptions = {}
+): Promise<Usage | undefined> {
   const reader = body.getReader();
   let buf = "";
   let usage: Usage | undefined;
   const decoder = new TextDecoder();
+  let firstDataEventMarked = false;
+
+  const markFirstDataEvent = () => {
+    if (firstDataEventMarked) return;
+    firstDataEventMarked = true;
+    options.onFirstDataEvent?.();
+  };
 
   const feedEvent = (evt: SseEvent) => {
+    const hasDataPayload = evt.data.some((line) => {
+      const trimmed = line.trim();
+      return trimmed.length > 0 && trimmed !== "[DONE]";
+    });
+    if (hasDataPayload) markFirstDataEvent();
+
     for (const line of evt.data) {
       const trimmed = line.trim();
       if (!trimmed) continue;

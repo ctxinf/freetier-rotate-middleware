@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "build": "tsc -p tsconfig.json",
-    "db:seed": "tsx scripts/seed.ts"
+    "test:api": "tsx script/test_api.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

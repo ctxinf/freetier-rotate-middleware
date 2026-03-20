@@ -21,10 +21,10 @@ app.use("*", async (c, next) => {
   const started = Date.now();
   const reqId = c.req.header("x-request-id") ?? "-";
   const reqLog = log.child({ requestId: reqId, method: c.req.method, path: c.req.path });
-  reqLog.debug("http request started");
   try {
     await next();
-    reqLog.info("http request completed", { status: c.res.status, latencyMs: Date.now() - started });
+    const seconds = ((Date.now() - started) / 1000).toFixed(3);
+    reqLog.info(`${c.req.method} ${c.req.path} ${c.res.status} ${seconds}s`);
   } catch (e) {
     reqLog.error("http request failed", { latencyMs: Date.now() - started, ...sanitizeError(e) });
     throw e;

@@ -18,6 +18,33 @@ type AttemptResult =
   | { kind: "next"; reason: "quota" | "upstream_error" | "upstream_retryable_status" };
 
 const log = createLogger("svc.proxy");
+const accessLog = createLogger("access");
+
+function formatDurationSeconds(latencyMs: number | undefined): string {
+  if (latencyMs === undefined || !Number.isFinite(latencyMs)) return "-";
+  return `${(latencyMs / 1000).toFixed(3)}s`;
+}
+
+function emitAccessLog(row: {
+  requestId: string;
+  entryModel: string;
+  upstreamModel: string;
+  status: number;
+  firstTokenMs: number;
+  totalLatencyMs?: number;
+  usage?: Usage | undefined;
+}): void {
+  const firstTokenSeconds = formatDurationSeconds(row.firstTokenMs);
+  const totalLatencySuffix = row.totalLatencyMs !== undefined
+    ? ` end=${formatDurationSeconds(row.totalLatencyMs)}`
+    : "";
+  const inputTokens = row.usage?.prompt_tokens ?? "-";
+  const outputTokens = row.usage?.completion_tokens ?? "-";
+  accessLog.info(
+    `[${row.entryModel}]->[${row.upstreamModel}] ${firstTokenSeconds} ${inputTokens}↑ ${outputTokens}↓${totalLatencySuffix}`,
+    { requestId: row.requestId, status: row.status }
+  );
+}
 
 function shouldStream(clientBody: any, clientReq: Request): boolean {
   if (clientBody?.stream === true) return true;
@@ -150,8 +177,8 @@ async function tryOneCandidate(
     return { kind: "next", reason: "upstream_error" };
   }
 
-  const latencyMs = Date.now() - started;
-  requestLog.debug("upstream response received", { status: upstreamRes.status, latencyMs });
+  const firstTokenMs = Date.now() - started;
+  requestLog.debug("upstream response received", { status: upstreamRes.status, firstTokenMs });
 
   // Retry-able upstream errors: allow fallback to next candidate.
   if (!upstreamRes.ok && (upstreamRes.status === 429 || upstreamRes.status >= 500)) {
@@ -161,14 +188,18 @@ async function tryOneCandidate(
       routeItemId: candidate.id,
       upstreamModel: candidate.upstreamModel,
       status: upstreamRes.status,
-      latencyMs
+      latencyMs: firstTokenMs
     });
-    requestLog.warn("retryable upstream response, fallback to next candidate", { status: upstreamRes.status, latencyMs });
+    requestLog.warn("retryable upstream response, fallback to next candidate", {
+      status: upstreamRes.status,
+      firstTokenMs
+    });
     return { kind: "next", reason: "upstream_retryable_status" };
   }
 
   if (!stream) {
     const text = await upstreamRes.text();
+    const totalLatencyMs = Date.now() - started;
     let usage: Usage | undefined;
     try {
       const obj = JSON.parse(text);
@@ -190,11 +221,19 @@ async function tryOneCandidate(
       routeItemId: candidate.id,
       upstreamModel: candidate.upstreamModel,
       status: upstreamRes.status,
-      latencyMs
+      latencyMs: firstTokenMs
     };
     if (usage) logRow.usage = usage;
     await upsertRequestLog(p.app, logRow);
-    requestLog.info("request completed", { status: upstreamRes.status, latencyMs, usage: usage ?? null });
+    emitAccessLog({
+      requestId: p.requestId,
+      entryModel: p.entryModel,
+      upstreamModel: candidate.upstreamModel,
+      status: upstreamRes.status,
+      firstTokenMs,
+      totalLatencyMs,
+      usage
+    });
 
     return { kind: "success", response: new Response(text, {
       status: upstreamRes.status,
@@ -209,9 +248,17 @@ async function tryOneCandidate(
       routeItemId: candidate.id,
       upstreamModel: candidate.upstreamModel,
       status: 502,
-      latencyMs
+      latencyMs: firstTokenMs
     });
-    requestLog.error("stream response missing body", { status: upstreamRes.status, latencyMs });
+    requestLog.error("stream response missing body", { status: upstreamRes.status, firstTokenMs });
+    emitAccessLog({
+      requestId: p.requestId,
+      entryModel: p.entryModel,
+      upstreamModel: candidate.upstreamModel,
+      status: 502,
+      firstTokenMs,
+      totalLatencyMs: firstTokenMs
+    });
     return { kind: "success", response: new Response(JSON.stringify({ error: { message: "Upstream stream missing body" } }), {
       status: 502,
       headers: { "content-type": "application/json" }
@@ -219,8 +266,14 @@ async function tryOneCandidate(
   }
 
   const [clientStream, collectorStream] = upstreamRes.body.tee();
-  collectUsageFromSse(collectorStream)
+  let streamFirstTokenMs = firstTokenMs;
+  collectUsageFromSse(collectorStream, {
+    onFirstDataEvent: () => {
+      streamFirstTokenMs = Date.now() - started;
+    }
+  })
     .then(async (usage) => {
+      const totalLatencyMs = Date.now() - started;
       await p.app.quota.finalize(acquired.tokenDayCharge, usage);
       const logRow: {
         requestId: string;
@@ -234,22 +287,39 @@ async function tryOneCandidate(
         routeItemId: candidate.id,
         upstreamModel: candidate.upstreamModel,
         status: upstreamRes.status,
-        latencyMs
+        latencyMs: streamFirstTokenMs
       };
       if (usage) logRow.usage = usage;
       await upsertRequestLog(p.app, logRow);
-      requestLog.info("stream completed", { status: upstreamRes.status, latencyMs, usage: usage ?? null });
+      emitAccessLog({
+        requestId: p.requestId,
+        entryModel: p.entryModel,
+        upstreamModel: candidate.upstreamModel,
+        status: upstreamRes.status,
+        firstTokenMs: streamFirstTokenMs,
+        totalLatencyMs,
+        usage
+      });
     })
     .catch(async (e) => {
+      const totalLatencyMs = Date.now() - started;
       await p.app.quota.finalize(acquired.tokenDayCharge, undefined);
       await upsertRequestLog(p.app, {
         requestId: p.requestId,
         routeItemId: candidate.id,
         upstreamModel: candidate.upstreamModel,
         status: upstreamRes.status,
-        latencyMs
+        latencyMs: streamFirstTokenMs
       });
       requestLog.warn("failed to collect stream usage", sanitizeError(e));
+      emitAccessLog({
+        requestId: p.requestId,
+        entryModel: p.entryModel,
+        upstreamModel: candidate.upstreamModel,
+        status: upstreamRes.status,
+        firstTokenMs: streamFirstTokenMs,
+        totalLatencyMs
+      });
     });
 
   return { kind: "success", response: new Response(clientStream, {
@@ -288,17 +358,42 @@ export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
         headers: { "content-type": "application/json" }
       });
     }
-    const latencyMs = Date.now() - started;
+    const firstTokenMs = Date.now() - started;
 
     if (!stream) {
       const text = await upstreamRes.text();
-      await upsertRequestLog(p.app, {
+      const totalLatencyMs = Date.now() - started;
+      let usage: Usage | undefined;
+      try {
+        const obj = JSON.parse(text);
+        if (obj?.usage) usage = obj.usage as Usage;
+      } catch {
+        // ignore
+      }
+
+      const logRow: {
+        requestId: string;
+        upstreamModel: string;
+        status: number;
+        latencyMs: number;
+        usage?: Usage;
+      } = {
         requestId: p.requestId,
         upstreamModel: p.entryModel,
         status: upstreamRes.status,
-        latencyMs
+        latencyMs: firstTokenMs
+      };
+      if (usage) logRow.usage = usage;
+      await upsertRequestLog(p.app, logRow);
+      emitAccessLog({
+        requestId: p.requestId,
+        entryModel: p.entryModel,
+        upstreamModel: p.entryModel,
+        status: upstreamRes.status,
+        firstTokenMs,
+        totalLatencyMs,
+        usage
       });
-      requestLog.info("direct fallback completed", { status: upstreamRes.status, latencyMs });
       return new Response(text, { status: upstreamRes.status, headers: filterUpstreamResponseHeaders(upstreamRes) });
     }
 
@@ -307,16 +402,30 @@ export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
         requestId: p.requestId,
         upstreamModel: p.entryModel,
         status: 502,
-        latencyMs
+        latencyMs: firstTokenMs
       });
-      requestLog.error("direct fallback stream missing body", { status: upstreamRes.status, latencyMs });
+      requestLog.error("direct fallback stream missing body", { status: upstreamRes.status, firstTokenMs });
+      emitAccessLog({
+        requestId: p.requestId,
+        entryModel: p.entryModel,
+        upstreamModel: p.entryModel,
+        status: 502,
+        firstTokenMs,
+        totalLatencyMs: firstTokenMs
+      });
       return new Response(JSON.stringify({ error: { message: "Upstream stream missing body" } }), {
         status: 502,
         headers: { "content-type": "application/json" }
       });
     }
 
-    requestLog.info("direct fallback stream started", { status: upstreamRes.status, latencyMs });
+    emitAccessLog({
+      requestId: p.requestId,
+      entryModel: p.entryModel,
+      upstreamModel: p.entryModel,
+      status: upstreamRes.status,
+      firstTokenMs
+    });
     return new Response(upstreamRes.body, { status: upstreamRes.status, headers: filterUpstreamResponseHeaders(upstreamRes) });
   }
 
