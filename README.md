@@ -2,6 +2,27 @@
 
 一个面向个人免费额度聚合场景的AI网关。  
 
+## 架构概览
+
+```mermaid
+flowchart LR
+    APP["APP\nmodel: my-api:free"]
+
+    subgraph GW1["freetier-rotate-middleware"]
+        kimi["kimi-2.0"]
+        glm["glm-4.7"]
+        pro["doubao-2.0-pro"]
+        mini["doubao-2.0-mini"]
+    end
+
+    GW2["NewAPI"]
+    Users["Users"]
+
+    APP -->|my-api:free| GW1
+    GW1 -->|重写后的 model 名| GW2
+    GW2 --> Users
+```
+
 
 ## 项目定位
 - 只实现 `OpenAI /v1/chat/completions` 与 `models` 相关接口。
@@ -17,17 +38,18 @@
 
 ## 快速启动（Docker Compose）
 1. 准备配置文件：
-   `cp config.example.jsonc config.jsonc`
+   `mkdir -p config && curl -fsSL https://raw.githubusercontent.com/ctxinf/freetier-rotate-middleware/main/config/config.example.jsonc -o config/config.jsonc`
 2. 使用如下 `compose.yml`：
 
 ```yaml
 services:
-  gateway:
+  freetier-rotate-middleware:
     image: ghcr.io/ctxinf/freetier-rotate-middleware:latest
+    container_name: freetier-rotate-middleware
     ports:
       - "3001:3001"
     volumes:
-      - ./config.jsonc:/app/config.jsonc:ro
+      - ./config:/app/config
       - gateway-data:/app/data
     restart: unless-stopped
 
@@ -35,17 +57,7 @@ volumes:
   gateway-data:
 ```
 
-3. 启动：`docker compose up -d`
-4. 查看日志：`docker compose logs -f gateway`
-5. 停止：`docker compose down`
+
 
 ## 配置说明
-- `configLoadMode`：
-  - `authoritative`：启动时按 `entryModel+upstreamModel` 全量覆盖（增删改）。
-  - `load_once`：仅插入不存在的路由，已存在路由保持不变。
-- `logLevel`：`debug` / `info` / `warn` / `error`
-- `upstreams + groups`：
-  - `upstreams` 定义上游模型配额策略。
-  - `groups` 定义入口模型到上游模型的路由与优先级映射。
-
-完整配置请直接参考：`config.jsonc` 与 `config.example.jsonc`。
+请直接参考项目中：`config/config.jsonc` 与 `config/config.example.jsonc`。

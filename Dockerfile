@@ -13,7 +13,7 @@ RUN npm run build && npm prune --omit=dev
 FROM node:22-bookworm-slim AS runtime
 
 ENV NODE_ENV=production
-ENV CONFIG_PATH=./config.jsonc
+ENV CONFIG_PATH=./config/config.jsonc
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN mkdir -p /app/data && chown -R node:node /app
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY config.jsonc ./config.jsonc
+COPY config ./config
 
 USER node
 EXPOSE 3001

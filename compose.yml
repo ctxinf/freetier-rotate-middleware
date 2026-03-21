@@ -1,10 +1,11 @@
 services:
-  gateway:
+  freetier-rotate-middleware:
     image: ghcr.io/ctxinf/freetier-rotate-middleware:latest
+    container_name: freetier-rotate-middleware
     ports:
       - "3001:3001"
     volumes:
-      - ./config.jsonc:/app/config.jsonc:ro
+      - ./config:/app/config
       - gateway-data:/app/data
     restart: unless-stopped
 
