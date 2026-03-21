@@ -2,25 +2,28 @@
 
 一个面向个人免费额度聚合场景的AI网关。  
 
+使用前:
+```
+手动制定model: doubao-seed-2-0-pro-260215
+用完每日额度后手动切换: gemini-flash-latest
+用完每日额度后手动切换: z-ai/glm-4.7
+....
+```
+
+使用后:
+```
+指定model: group-free
+第1优先级使用 doubao-seed-2-0-pro-260215, 每日额度用完后切换下一个
+第2优先级使用 gemini-flash-latest, 每分钟最大5次请求, 每日最大100次请求, 用完切换下一个
+第3优先级使用 z-ai/glm-4.7, 每分钟最大2次请求, 每日最大1000次请求, 用完切换下一个
+...
+```
+
 ## 架构概览
 
-```mermaid
-flowchart LR
-    APP["APP\nmodel: my-api:free"]
-
-    subgraph GW1["freetier-rotate-middleware"]
-        kimi["kimi-2.0"]
-        glm["glm-4.7"]
-        pro["doubao-2.0-pro"]
-        mini["doubao-2.0-mini"]
-    end
-
-    GW2["NewAPI"]
-    Users["Users"]
-
-    APP -->|my-api:free| GW1
-    GW1 -->|重写后的 model 名| GW2
-    GW2 --> Users
+```text
+APP ──[自定义modelname, 如group-free]──► freetier-rotate-middleware ──[重写model名]──► NewAPI ──► Users
+                        (按条件 rotate + 重定向)
 ```
 
 
@@ -37,10 +40,13 @@ flowchart LR
 - 同优先级模型会做轮询（rotate）。
 
 ## 快速启动（Docker Compose）
-1. 准备配置文件：
-   `mkdir -p config && curl -fsSL https://raw.githubusercontent.com/ctxinf/freetier-rotate-middleware/main/config/config.example.jsonc -o config/config.jsonc`
-2. 使用如下 `compose.yml`：
+```sh
+mkdir -p config 
+curl -fsSL https://raw.githubusercontent.com/ctxinf/freetier-rotate-middleware/main/config/config.example.jsonc -o config/config.jsonc
+vim config/config.jsonc #修改上游地址, 模型名..
+```
 
+`compose.yml`：
 ```yaml
 services:
   freetier-rotate-middleware:

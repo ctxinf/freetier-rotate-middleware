@@ -9,7 +9,7 @@ const gatewayBaseUrl = (process.env.TEST_GATEWAY_BASE_URL ?? "http://127.0.0.1:3
 const path = process.env.TEST_CHAT_PATH ?? "/v1/chat/completions";
 const url = `${gatewayBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
-const model = process.env.TEST_MODEL ?? "my-api:free";
+const model = process.env.TEST_MODEL ?? "group-free";
 const userPrompt = process.argv.slice(2).join(" ").trim() || "你好，回我一个pong";
 
 const payload = {

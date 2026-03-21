@@ -111,7 +111,7 @@
   // 3) 命中不可用（配额耗尽/上游失败）会自动尝试下一个
   "groups": [
     {
-      "entryModel": "my-api:free",
+      "entryModel": "group-free",
       "routes": [
         { "upstreamModel": "doubao-seed-2-0-pro-260215", "priority": 100 },
         { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 95 },
