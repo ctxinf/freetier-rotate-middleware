@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gateway Admin API"
+  short_description: "Manage routes and inspect status JSON for this gateway"
+  default_prompt: "Use $freetier-gateway-admin-status to manage routes and inspect gateway runtime status."

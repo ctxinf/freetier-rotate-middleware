@@ -67,3 +67,8 @@ volumes:
 
 ## 配置说明
 请直接参考项目中：`config/config.jsonc` 与 `config/config.example.jsonc`。
+
+## 安装skills让Agent管理
+```
+npx skills add ctxinf/freetier-rotate-middleware
+```
