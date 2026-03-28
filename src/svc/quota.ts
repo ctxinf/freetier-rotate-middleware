@@ -1,15 +1,17 @@
 import type { GatewayDb } from "../storage/db.js";
 import { createLogger } from "../logging.js";
 import type { RouteItem, StrategyType } from "./router.js";
+import { parseCycleDays, resolveCycleWindow } from "./cycle.js";
 
 type TokenDayConfig = {
   dailyTokenLimit: number;
-  resetHourUtc?: number;
+  cycleDays: number;
 };
 
 type ReqMinDayConfig = {
   reqPerMin: number;
   reqPerDay: number;
+  cycleDays: number;
 };
 
 export type Usage = {
@@ -57,7 +59,7 @@ function parseConfig(strategyType: StrategyType, configJson: string): TokenDayCo
     }
     return {
       dailyTokenLimit,
-      resetHourUtc: Number.isFinite(Number(obj.resetHourUtc)) ? Number(obj.resetHourUtc) : 0
+      cycleDays: parseCycleDays(obj.cycleDays ?? obj.cycle, 1)
     };
   }
 
@@ -65,27 +67,15 @@ function parseConfig(strategyType: StrategyType, configJson: string): TokenDayCo
   const reqPerDay = Number(obj.reqPerDay);
   if (!Number.isFinite(reqPerMin) || reqPerMin <= 0) throw new Error("req_min_day missing reqPerMin");
   if (!Number.isFinite(reqPerDay) || reqPerDay <= 0) throw new Error("req_min_day missing reqPerDay");
-  return { reqPerMin, reqPerDay };
+  return { reqPerMin, reqPerDay, cycleDays: parseCycleDays(obj.cycleDays ?? obj.cycle, 1) };
 }
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-function utcDayString(d: Date): string {
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
-}
-
 function utcMinuteString(d: Date): string {
-  return `${utcDayString(d)}T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
-}
-
-function quotaDayBucket(now: Date, resetHourUtc: number): string {
-  // If reset is at 08:00 UTC, then 07:59 still belongs to "yesterday" bucket.
-  const hour = now.getUTCHours();
-  const bucketDate = new Date(now);
-  if (hour < resetHourUtc) bucketDate.setUTCDate(bucketDate.getUTCDate() - 1);
-  return utcDayString(bucketDate);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
 }
 
 export function createQuotaService(db: GatewayDb) {
@@ -127,13 +117,13 @@ export function createQuotaService(db: GatewayDb) {
     }
   }
 
-  async function canStartTokenDay(upstreamModel: string, dayBucket: string, dailyLimit: number): Promise<boolean> {
+  async function canStartTokenCycle(upstreamModel: string, bucketKey: string, dailyLimit: number): Promise<boolean> {
     const tx = await db.raw.transaction("write");
     try {
-      await ensureCounterRow(tx, upstreamModel, dayBucket);
+      await ensureCounterRow(tx, upstreamModel, bucketKey);
       const res = await tx.execute({
         sql: "SELECT used_tokens FROM quota_counters WHERE upstream_model = ? AND bucket_key = ? LIMIT 1",
-        args: [upstreamModel, dayBucket]
+        args: [upstreamModel, bucketKey]
       });
       const used = Number((res?.rows?.[0] as any)?.used_tokens ?? 0);
       const ok = Number.isFinite(used) ? used < dailyLimit : true;
@@ -144,11 +134,11 @@ export function createQuotaService(db: GatewayDb) {
     }
   }
 
-  async function chargeTokens(upstreamModel: string, dayBucket: string, actual: number): Promise<void> {
-    await ensureCounterRow(db.raw, upstreamModel, dayBucket);
+  async function chargeTokens(upstreamModel: string, bucketKey: string, actual: number): Promise<void> {
+    await ensureCounterRow(db.raw, upstreamModel, bucketKey);
     await db.raw.execute({
       sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE upstream_model = ? AND bucket_key = ?",
-      args: [actual, upstreamModel, dayBucket]
+      args: [actual, upstreamModel, bucketKey]
     });
   }
 
@@ -163,8 +153,9 @@ export function createQuotaService(db: GatewayDb) {
         log.warn("invalid req_min_day route config", { routeItemId: routeItem.id });
         return { ok: false, reason: "invalid config" };
       }
+      const cycle = resolveCycleWindow(now, cfg.cycleDays);
       const minuteBucket = utcMinuteString(now);
-      const dayBucket = utcDayString(now);
+      const dayBucket = cycle.bucketKey;
 
       const ok = await consumeReqMinuteAndDay(routeItem.upstreamModel, minuteBucket, cfg.reqPerMin, dayBucket, cfg.reqPerDay);
       if (!ok) return { ok: false, reason: "req quota exceeded" };
@@ -179,14 +170,14 @@ export function createQuotaService(db: GatewayDb) {
         log.warn("invalid token_day route config", { routeItemId: routeItem.id });
         return { ok: false, reason: "invalid config" };
       }
-      const dayBucket = quotaDayBucket(now, cfg.resetHourUtc ?? 0);
-      const ok = await canStartTokenDay(routeItem.upstreamModel, dayBucket, cfg.dailyTokenLimit);
+      const cycle = resolveCycleWindow(now, cfg.cycleDays);
+      const ok = await canStartTokenCycle(routeItem.upstreamModel, cycle.bucketKey, cfg.dailyTokenLimit);
       if (!ok) return { ok: false, reason: "token quota exceeded" };
 
       return {
         ok: true,
         routeItem,
-        tokenDayCharge: { upstreamModel: routeItem.upstreamModel, dayBucket }
+        tokenDayCharge: { upstreamModel: routeItem.upstreamModel, dayBucket: cycle.bucketKey }
       };
     }
 
@@ -198,7 +189,7 @@ export function createQuotaService(db: GatewayDb) {
     const actual = usage?.total_tokens;
     if (typeof actual === "number" && Number.isFinite(actual) && actual >= 0) {
       await chargeTokens(charge.upstreamModel, charge.dayBucket, actual);
-      log.debug("token_day charged", { upstreamModel: charge.upstreamModel, dayBucket: charge.dayBucket, totalTokens: actual });
+      log.debug("token_day charged", { upstreamModel: charge.upstreamModel, bucketKey: charge.dayBucket, totalTokens: actual });
     }
   }
 

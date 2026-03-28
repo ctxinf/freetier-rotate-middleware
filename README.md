@@ -34,8 +34,8 @@ APP ──[自定义modelname, 如group-free]──► freetier-rotate-middlewar
 - 本项目作为 `newapi` 的上游地址，由 `newapi` 对外统一鉴权与计费。
 
 ## 支持的限流/配额策略
-- `token_day`：按天 Token 限额（如每日 200 万 Token，指定 UTC 重置小时）。
-- `req_min_day`：每分钟请求数 + 每日请求数双限额。
+- `token_day`：按天 Token 限额，`cycleDays` 可设为 `1`、`7` 这类纯天周期。
+- `req_min_day`：每分钟请求数 + 按天请求数双限额，`cycleDays` 同样可配置。
 - 路由优先级按 `priority` 从高到低，命中可用模型即使用。
 - 同优先级模型会做轮询（rotate）。
 

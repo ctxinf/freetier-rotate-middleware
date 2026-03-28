@@ -45,7 +45,7 @@
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 1
+        "cycleDays": 1
       }
     },
     {
@@ -54,7 +54,7 @@
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 1
+        "cycleDays": 1
       }
     },
     {
@@ -63,7 +63,7 @@
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 1
+        "cycleDays": 1
       }
     },
     {
@@ -72,7 +72,7 @@
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 1
+        "cycleDays": 1
       }
     },
     {
@@ -81,7 +81,7 @@
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "2M",
-        "resetHourUtc": 1
+        "cycleDays": 1
       }
     },
     {
@@ -90,7 +90,7 @@
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "5M",
-        "resetHourUtc": 1
+        "cycleDays": 1
       }
     },
     {
@@ -99,7 +99,7 @@
       "enabled": 1,
       "config": {
         "dailyTokenLimit": "1M",
-        "resetHourUtc": 1
+        "cycleDays": 1
       }
     }
   ],

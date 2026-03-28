@@ -333,100 +333,54 @@ export async function proxyChatCompletions(p: ProxyParams): Promise<Response> {
   const requestLog = log.child({ requestId: p.requestId, entryModel: p.entryModel, stream });
   requestLog.debug("proxy request accepted");
 
-  const candidates = await p.app.router.listCandidates(p.entryModel);
-  requestLog.debug("candidate list resolved", { candidateCount: candidates.length });
-  if (candidates.length === 0) {
-    const upstreamBaseUrl = p.app.runtime.getUpstreamBaseUrl();
-    const url = upstreamUrl(upstreamBaseUrl);
-    const headers = buildUpstreamHeaders(p.app, p.clientReq, p.requestId);
-    const upstreamBody = { ...p.clientBody, model: p.entryModel };
-    const started = Date.now();
-    requestLog.info("no route candidates, direct upstream fallback", { url });
-    let upstreamRes: Response;
-    try {
-      upstreamRes = await fetch(url, { method: "POST", headers, body: JSON.stringify(upstreamBody) });
-    } catch (e) {
-      requestLog.error("direct upstream fallback failed", sanitizeError(e));
-      await upsertRequestLog(p.app, {
-        requestId: p.requestId,
-        upstreamModel: p.entryModel,
-        status: 502,
-        latencyMs: Date.now() - started
-      });
-      return new Response(JSON.stringify({ error: { message: "Upstream request failed" } }), {
-        status: 502,
-        headers: { "content-type": "application/json" }
-      });
-    }
-    const firstTokenMs = Date.now() - started;
-
-    if (!stream) {
-      const text = await upstreamRes.text();
-      const totalLatencyMs = Date.now() - started;
-      let usage: Usage | undefined;
-      try {
-        const obj = JSON.parse(text);
-        if (obj?.usage) usage = obj.usage as Usage;
-      } catch {
-        // ignore
-      }
-
-      const logRow: {
-        requestId: string;
-        upstreamModel: string;
-        status: number;
-        latencyMs: number;
-        usage?: Usage;
-      } = {
-        requestId: p.requestId,
-        upstreamModel: p.entryModel,
-        status: upstreamRes.status,
-        latencyMs: firstTokenMs
-      };
-      if (usage) logRow.usage = usage;
-      await upsertRequestLog(p.app, logRow);
-      emitAccessLog({
-        requestId: p.requestId,
-        entryModel: p.entryModel,
-        upstreamModel: p.entryModel,
-        status: upstreamRes.status,
-        firstTokenMs,
-        totalLatencyMs,
-        usage
-      });
-      return new Response(text, { status: upstreamRes.status, headers: filterUpstreamResponseHeaders(upstreamRes) });
-    }
-
-    if (!upstreamRes.body) {
-      await upsertRequestLog(p.app, {
-        requestId: p.requestId,
-        upstreamModel: p.entryModel,
-        status: 502,
-        latencyMs: firstTokenMs
-      });
-      requestLog.error("direct fallback stream missing body", { status: upstreamRes.status, firstTokenMs });
-      emitAccessLog({
-        requestId: p.requestId,
-        entryModel: p.entryModel,
-        upstreamModel: p.entryModel,
-        status: 502,
-        firstTokenMs,
-        totalLatencyMs: firstTokenMs
-      });
-      return new Response(JSON.stringify({ error: { message: "Upstream stream missing body" } }), {
-        status: 502,
-        headers: { "content-type": "application/json" }
-      });
-    }
-
+  const started = Date.now();
+  const entryModelExists = await p.app.router.hasEntryModel(p.entryModel);
+  if (!entryModelExists) {
+    const latencyMs = Date.now() - started;
+    requestLog.warn("entry model not found", { latencyMs });
+    await upsertRequestLog(p.app, {
+      requestId: p.requestId,
+      upstreamModel: p.entryModel,
+      status: 404,
+      latencyMs
+    });
     emitAccessLog({
       requestId: p.requestId,
       entryModel: p.entryModel,
       upstreamModel: p.entryModel,
-      status: upstreamRes.status,
-      firstTokenMs
+      status: 404,
+      firstTokenMs: latencyMs,
+      totalLatencyMs: latencyMs
     });
-    return new Response(upstreamRes.body, { status: upstreamRes.status, headers: filterUpstreamResponseHeaders(upstreamRes) });
+    return new Response(JSON.stringify({ error: { message: "Model not found" } }), {
+      status: 404,
+      headers: { "content-type": "application/json" }
+    });
+  }
+
+  const candidates = await p.app.router.listCandidates(p.entryModel);
+  requestLog.debug("candidate list resolved", { candidateCount: candidates.length });
+  if (candidates.length === 0) {
+    const latencyMs = Date.now() - started;
+    requestLog.warn("no enabled route candidates", { latencyMs });
+    await upsertRequestLog(p.app, {
+      requestId: p.requestId,
+      upstreamModel: p.entryModel,
+      status: 429,
+      latencyMs
+    });
+    emitAccessLog({
+      requestId: p.requestId,
+      entryModel: p.entryModel,
+      upstreamModel: p.entryModel,
+      status: 429,
+      firstTokenMs: latencyMs,
+      totalLatencyMs: latencyMs
+    });
+    return new Response(JSON.stringify({ error: { message: "No enabled route candidates" } }), {
+      status: 429,
+      headers: { "content-type": "application/json" }
+    });
   }
 
   let hasQuotaExhausted = false;

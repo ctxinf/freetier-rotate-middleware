@@ -1,10 +1,11 @@
 import type { Context, Hono } from "hono";
 import { createLogger } from "../logging.js";
 import type { AppContext } from "../svc/context.js";
+import { normalizeStrategyConfigJson, type RouteStrategyType } from "../svc/route-config.js";
 
 const log = createLogger("admin.rest");
 
-type StrategyType = "token_day" | "req_min_day";
+type StrategyType = RouteStrategyType;
 
 type RouteWritePayload = {
   entryModel: string;
@@ -14,33 +15,6 @@ type RouteWritePayload = {
   enabled: number;
   configJson: string;
 };
-
-function normalizeTokenDayConfigToTokens(input: any): any {
-  if (!input || typeof input !== "object") return input;
-  const obj: any = { ...input };
-  let dailyTokenLimitTokens: number | undefined;
-
-  if (obj.dailyTokenLimitTokens !== undefined) {
-    dailyTokenLimitTokens = Number(obj.dailyTokenLimitTokens);
-  } else if (obj.dailyTokenLimitM !== undefined) {
-    dailyTokenLimitTokens = Number(obj.dailyTokenLimitM) * 1_000_000;
-  } else if (typeof obj.dailyTokenLimit === "string") {
-    const s = obj.dailyTokenLimit.trim();
-    const m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*([mM])$/);
-    if (m) dailyTokenLimitTokens = Number(m[1]) * 1_000_000;
-    else dailyTokenLimitTokens = Number(s);
-  } else if (obj.dailyTokenLimit !== undefined) {
-    const raw = Number(obj.dailyTokenLimit);
-    dailyTokenLimitTokens = raw >= 1_000_000 ? raw : raw * 1_000_000;
-  }
-
-  if (dailyTokenLimitTokens !== undefined && Number.isFinite(dailyTokenLimitTokens)) {
-    obj.dailyTokenLimit = dailyTokenLimitTokens;
-    delete obj.dailyTokenLimitTokens;
-    delete obj.dailyTokenLimitM;
-  }
-  return obj;
-}
 
 function parseRouteWritePayload(input: any): RouteWritePayload {
   const entryModel = String(input?.entryModel ?? "").trim();
@@ -59,15 +33,13 @@ function parseRouteWritePayload(input: any): RouteWritePayload {
   const enabledRaw = input?.enabled;
   const enabled = enabledRaw === 0 || enabledRaw === "0" || enabledRaw === false ? 0 : 1;
 
-  let configObj: any = {};
-  if (typeof input?.configJson === "string") {
-    try {
-      configObj = JSON.parse(input.configJson);
-    } catch {
-      throw new Error("configJson must be valid JSON");
-    }
-  } else if (input?.config !== undefined) {
-    configObj = input.config;
+  const rawConfig = input?.configJson !== undefined ? input.configJson : input?.config;
+  const configJson = normalizeStrategyConfigJson(strategyType, rawConfig, "route");
+  let configObj: any;
+  try {
+    configObj = JSON.parse(configJson);
+  } catch {
+    throw new Error("configJson must be valid JSON");
   }
 
   if (!configObj || typeof configObj !== "object" || Array.isArray(configObj)) {
@@ -82,12 +54,10 @@ function parseRouteWritePayload(input: any): RouteWritePayload {
   }
 
   if (strategyType === "token_day") {
-    const normalized = normalizeTokenDayConfigToTokens(configObj);
-    const dailyTokenLimit = Number(normalized?.dailyTokenLimit);
+    const dailyTokenLimit = Number(configObj?.dailyTokenLimit);
     if (!Number.isFinite(dailyTokenLimit) || dailyTokenLimit <= 0) {
       throw new Error("token_day requires dailyTokenLimit > 0");
     }
-    configObj = normalized;
   }
 
   return {
@@ -96,7 +66,7 @@ function parseRouteWritePayload(input: any): RouteWritePayload {
     strategyType,
     priority,
     enabled,
-    configJson: JSON.stringify(configObj)
+    configJson
   };
 }
 

@@ -57,5 +57,13 @@ export function createRouter(db: GatewayDb) {
     }));
   }
 
-  return { listCandidates };
+  async function hasEntryModel(entryModel: string): Promise<boolean> {
+    const res = await db.raw.execute({
+      sql: "SELECT 1 FROM route_items WHERE public_model = ? LIMIT 1",
+      args: [entryModel]
+    });
+    return Number((res.rows?.length ?? 0)) > 0;
+  }
+
+  return { listCandidates, hasEntryModel };
 }

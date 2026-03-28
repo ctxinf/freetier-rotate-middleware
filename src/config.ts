@@ -1,9 +1,10 @@
 import dotenv from "dotenv";
 import fs from "node:fs";
+import { normalizeStrategyConfigJson, type RouteStrategyType } from "./svc/route-config.js";
 
 dotenv.config();
 
-export type StrategyType = "token_day" | "req_min_day";
+export type StrategyType = RouteStrategyType;
 
 export type AppConfig = {
   port: number;
@@ -41,39 +42,6 @@ type GroupRouteRef = {
   strategyTypeRaw?: unknown;
   configJsonRaw?: unknown;
 };
-
-function normalizeTokenDayConfigToTokens(input: any): any {
-  if (!input || typeof input !== "object") return input;
-  const obj: any = { ...input };
-
-  let dailyTokenLimitTokens: number | undefined;
-
-  if (obj.dailyTokenLimitTokens !== undefined) {
-    dailyTokenLimitTokens = Number(obj.dailyTokenLimitTokens);
-  } else if (obj.dailyTokenLimitM !== undefined) {
-    dailyTokenLimitTokens = Number(obj.dailyTokenLimitM) * 1_000_000;
-  } else if (typeof obj.dailyTokenLimit === "string") {
-    const s = obj.dailyTokenLimit.trim();
-    const m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*([mM])$/);
-    if (m) dailyTokenLimitTokens = Number(m[1]) * 1_000_000;
-    else dailyTokenLimitTokens = Number(s);
-  } else if (obj.dailyTokenLimit !== undefined) {
-    const raw = Number(obj.dailyTokenLimit);
-    dailyTokenLimitTokens = raw >= 1_000_000 ? raw : raw * 1_000_000;
-  }
-
-  if (dailyTokenLimitTokens !== undefined && Number.isFinite(dailyTokenLimitTokens)) {
-    obj.dailyTokenLimit = dailyTokenLimitTokens;
-    delete obj.dailyTokenLimitM;
-    delete obj.dailyTokenLimitTokens;
-  }
-
-  // Removed config keys: keep backwards-compat but strip them to reduce confusion.
-  delete obj.reserveMultiplier;
-  delete obj.reserveFloor;
-
-  return obj;
-}
 
 function stripJsoncComments(source: string): string {
   let out = "";
@@ -215,13 +183,7 @@ function parseConfigJson(
   rawConfigJson: unknown,
   fieldPath: string
 ): string {
-  if (typeof rawConfigJson === "string") return rawConfigJson;
-  if (rawConfigJson === undefined) return "{}";
-  if (rawConfigJson === null || typeof rawConfigJson !== "object" || Array.isArray(rawConfigJson)) {
-    throw new Error(`${fieldPath} config/configJson must be object or JSON string`);
-  }
-  const normalized = strategyType === "token_day" ? normalizeTokenDayConfigToTokens(rawConfigJson) : rawConfigJson;
-  return JSON.stringify(normalized);
+  return normalizeStrategyConfigJson(strategyType, rawConfigJson, fieldPath);
 }
 
 function resolveRouteRef(rawRef: any, idx: number, basePriority: number, step: number): GroupRouteRef {

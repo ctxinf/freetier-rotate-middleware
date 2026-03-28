@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { asc, desc } from "drizzle-orm";
 import type { AppConfig } from "../config.js";
 import type { AppContext } from "../svc/context.js";
+import { parseCycleDays, resolveCycleWindow } from "../svc/cycle.js";
 import { routeItems as routeItemsTable } from "../storage/schema.js";
 
 function escapeHtml(input: string): string {
@@ -11,25 +12,6 @@ function escapeHtml(input: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-function utcDayString(d: Date): string {
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
-}
-
-function utcMinuteString(d: Date): string {
-  return `${utcDayString(d)}T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
-}
-
-function quotaDayBucket(now: Date, resetHourUtc: number): string {
-  const hour = now.getUTCHours();
-  const bucketDate = new Date(now);
-  if (hour < resetHourUtc) bucketDate.setUTCDate(bucketDate.getUTCDate() - 1);
-  return utcDayString(bucketDate);
 }
 
 function parseJsonSafe(input: string): any {
@@ -44,6 +26,42 @@ function formatTokensM(n: unknown): string {
   const v = typeof n === "number" ? n : Number(n);
   if (!Number.isFinite(v)) return "?M";
   return `${(v / 1_000_000).toFixed(3)}M`;
+}
+
+function formatDurationMs(ms: unknown): string {
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value < 0) return "-";
+  let remaining = Math.floor(value / 1000);
+  const days = Math.floor(remaining / 86400);
+  remaining -= days * 86400;
+  const hours = Math.floor(remaining / 3600);
+  remaining -= hours * 3600;
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining - minutes * 60;
+
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || parts.length > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
+}
+
+function resolveRouteCycle(parsed: any, now: Date) {
+  let cycleDays = 1;
+  try {
+    cycleDays = parseCycleDays(parsed?.cycleDays ?? parsed?.cycle, 1);
+  } catch {
+    cycleDays = 1;
+  }
+  const cycle = resolveCycleWindow(now, cycleDays);
+  return {
+    cycleDays: cycle.cycleDays,
+    cycleStartIso: cycle.cycleStart.toISOString(),
+    cycleEndIso: cycle.cycleEnd.toISOString(),
+    cycleRemainingMs: cycle.remainingMs,
+    bucketKey: cycle.bucketKey
+  };
 }
 
 function renderTable(
@@ -86,13 +104,15 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
   const itemsWithUsage: any[] = [];
   for (const ri of routes as any[]) {
     const parsed = parseJsonSafe(ri.configJson);
+    const cycle = resolveRouteCycle(parsed, now);
 
     if (ri.strategyType === "req_min_day") {
-      const minuteBucket = utcMinuteString(now);
-      const dayBucket = utcDayString(now);
+      const minuteBucket = now.toISOString().slice(0, 16);
+      const dayBucket = cycle.bucketKey;
       itemsWithUsage.push({
         ...ri,
         parsedConfig: parsed,
+        cycle,
         buckets: { minuteBucket, dayBucket },
         counters: {
           minute: await getCounter(ri.upstreamModel, minuteBucket),
@@ -103,12 +123,12 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
     }
 
     if (ri.strategyType === "token_day") {
-      const resetHourUtc = Number.isFinite(Number(parsed.resetHourUtc)) ? Number(parsed.resetHourUtc) : 0;
-      const dayBucket = quotaDayBucket(now, resetHourUtc);
+      const dayBucket = cycle.bucketKey;
       itemsWithUsage.push({
         ...ri,
         parsedConfig: parsed,
-        buckets: { dayBucket, resetHourUtc },
+        cycle,
+        buckets: { dayBucket },
         counters: {
           day: await getCounter(ri.upstreamModel, dayBucket)
         }
@@ -116,7 +136,7 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
       continue;
     }
 
-    itemsWithUsage.push({ ...ri, parsedConfig: parsed, buckets: null, counters: null });
+    itemsWithUsage.push({ ...ri, parsedConfig: parsed, cycle, buckets: null, counters: null });
   }
 
   const recentCountersRes = await app.db.raw.execute(
@@ -142,8 +162,12 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
         minPriority: ri.priority,
         maxPriority: ri.priority,
         entryModels: new Set<string>([String(ri.entryModel)]),
+        configJson: String(ri.configJson ?? ""),
+        cycleDays: ri.cycle?.cycleDays ?? 1,
         sample: ri,
-        mixedStrategy: false
+        mixedStrategy: false,
+        mixedConfig: false,
+        mixedCycle: false
       });
       continue;
     }
@@ -153,25 +177,35 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
     existing.maxPriority = Math.max(existing.maxPriority, Number(ri.priority));
     existing.entryModels.add(String(ri.entryModel));
     if (existing.strategyType !== ri.strategyType) existing.mixedStrategy = true;
+    if (existing.configJson !== String(ri.configJson ?? "")) existing.mixedConfig = true;
+    if (existing.cycleDays !== (ri.cycle?.cycleDays ?? 1)) existing.mixedCycle = true;
   }
 
   const upstreams = Array.from(upstreamMap.values())
     .map((u) => {
       const sample = u.sample;
       const strategyType = u.mixedStrategy ? "mixed" : u.strategyType;
-      let bucket = "-";
+      let cycleStart = "-";
+      let cycleLeft = "-";
       let usage = "-";
-      if (!u.mixedStrategy && sample?.strategyType === "req_min_day") {
+      const isMixed = u.mixedStrategy || u.mixedConfig || u.mixedCycle;
+      if (!isMixed && sample?.strategyType === "req_min_day") {
         const minute = sample.counters?.minute;
         const day = sample.counters?.day;
         const cfg = sample.parsedConfig ?? {};
-        bucket = `${sample.buckets?.minuteBucket ?? "-"} | ${sample.buckets?.dayBucket ?? "-"}`;
+        cycleStart = sample.cycle?.cycleStartIso ?? "-";
+        cycleLeft = formatDurationMs(sample.cycle?.cycleRemainingMs);
         usage = `req: ${minute?.used_req ?? 0}/${cfg.reqPerMin ?? "?"}/min, ${day?.used_req ?? 0}/${cfg.reqPerDay ?? "?"}/day`;
-      } else if (!u.mixedStrategy && sample?.strategyType === "token_day") {
+      } else if (!isMixed && sample?.strategyType === "token_day") {
         const day = sample.counters?.day;
         const cfg = sample.parsedConfig ?? {};
-        bucket = `${sample.buckets?.dayBucket ?? "-"} (reset@${sample.buckets?.resetHourUtc ?? 0}hZ)`;
+        cycleStart = sample.cycle?.cycleStartIso ?? "-";
+        cycleLeft = formatDurationMs(sample.cycle?.cycleRemainingMs);
         usage = `token: ${formatTokensM(day?.used_tokens ?? 0)}/${formatTokensM(cfg.dailyTokenLimit)}`;
+      } else if (isMixed) {
+        cycleStart = "mixed";
+        cycleLeft = "mixed";
+        usage = "mixed";
       }
       return {
         upstreamModel: u.upstreamModel,
@@ -180,7 +214,8 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
         routeCount: u.routeCount,
         priorityRange: `${u.maxPriority}..${u.minPriority}`,
         entryModels: Array.from(u.entryModels).sort(),
-        bucket,
+        cycleStart,
+        cycleLeft,
         usage
       };
     })
@@ -216,6 +251,8 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     const routeGroups = new Map<string, Array<Array<string | number | null | undefined>>>();
     for (const ri of payload.routes as any[]) {
       const enabled = ri.enabled === 1 ? "🟢" : "";
+      const cycleStart = ri.cycle?.cycleStartIso ?? "-";
+      const cycleLeft = formatDurationMs(ri.cycle?.cycleRemainingMs);
       let usage = "-";
 
       if (ri.strategyType === "req_min_day") {
@@ -231,14 +268,14 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
 
       const entryModel = String(ri.entryModel);
       if (!routeGroups.has(entryModel)) routeGroups.set(entryModel, []);
-      routeGroups.get(entryModel)!.push([enabled, ri.upstreamModel, ri.strategyType, ri.priority, usage]);
+      routeGroups.get(entryModel)!.push([enabled, ri.upstreamModel, ri.strategyType, ri.priority, cycleStart, cycleLeft, usage]);
     }
 
     const routeGroupsHtml = Array.from(routeGroups.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(
-        ([entryModel, rows]) => `<h3>entry_model: ${escapeHtml(entryModel)}</h3>${renderTable(
-          ["enabled", "upstream_model", "strategy", "priority", "usage"],
+      ([entryModel, rows]) => `<h3>entry_model: ${escapeHtml(entryModel)}</h3>${renderTable(
+          ["enabled", "upstream_model", "strategy", "priority", "cycle_start", "cycle_left", "usage"],
           rows,
           { fitWidth: true }
         )}`
@@ -248,6 +285,8 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     const upstreamRows: Array<Array<string | number | null | undefined>> = (payload.upstreams as any[]).map((u) => [
       u.upstreamModel,
       `${u.enabledCount}/${u.routeCount}`,
+      u.cycleStart,
+      u.cycleLeft,
       u.usage
     ]);
 
@@ -300,7 +339,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
 
     <h2>upstreams</h2>
     ${renderTable(
-      ["upstream_model", "routes(enabled/all)", "usage"],
+      ["upstream_model", "routes(enabled/all)", "cycle_start", "cycle_left", "usage"],
       upstreamRows,
       { fitWidth: true }
     )}
