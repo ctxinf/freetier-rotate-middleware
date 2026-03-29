@@ -2,7 +2,7 @@ import { parseCycleDays } from "./cycle.js";
 
 export type RouteStrategyType = "token_day" | "req_min_day";
 
-function normalizeTokenLimitToTokens(input: any): number {
+export function normalizeTokenLimitToTokens(input: any): number {
   let dailyTokenLimit: number = NaN;
 
   if (input.dailyTokenLimitTokens !== undefined) {
@@ -15,8 +15,7 @@ function normalizeTokenLimitToTokens(input: any): number {
     if (m) dailyTokenLimit = Number(m[1]) * 1_000_000;
     else dailyTokenLimit = Number(s);
   } else {
-    const raw = Number(input.dailyTokenLimit);
-    dailyTokenLimit = raw >= 1_000_000 ? raw : raw * 1_000_000;
+    dailyTokenLimit = Number(input.dailyTokenLimit);
   }
 
   return dailyTokenLimit;

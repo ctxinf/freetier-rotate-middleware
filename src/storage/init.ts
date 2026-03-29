@@ -26,15 +26,17 @@ async function migrateQuotaCountersToUpstreamModel(db: GatewayDb): Promise<void>
         upstream_model TEXT NOT NULL,
         bucket_key TEXT NOT NULL,
         used_tokens INTEGER NOT NULL DEFAULT 0,
+        in_flight_token_requests INTEGER NOT NULL DEFAULT 0,
         used_req INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         UNIQUE(upstream_model, bucket_key)
       )`,
-      `INSERT INTO quota_counters(upstream_model, bucket_key, used_tokens, used_req, updated_at)
+      `INSERT INTO quota_counters(upstream_model, bucket_key, used_tokens, in_flight_token_requests, used_req, updated_at)
        SELECT
          COALESCE(ri.upstream_model, '__legacy_route_' || CAST(q.route_item_id AS TEXT)) AS upstream_model,
          q.bucket_key,
          SUM(COALESCE(q.used_tokens, 0)) AS used_tokens,
+         0 AS in_flight_token_requests,
          SUM(COALESCE(q.used_req, 0)) AS used_req,
          MAX(COALESCE(q.updated_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))) AS updated_at
        FROM quota_counters_legacy q
@@ -45,6 +47,15 @@ async function migrateQuotaCountersToUpstreamModel(db: GatewayDb): Promise<void>
     ],
     "write"
   );
+}
+
+async function ensureQuotaCountersInflightColumn(db: GatewayDb): Promise<void> {
+  const hasInflightTokenRequests = await tableHasColumn(db, "quota_counters", "in_flight_token_requests");
+  if (!hasInflightTokenRequests) {
+    await db.raw.execute(
+      "ALTER TABLE quota_counters ADD COLUMN in_flight_token_requests INTEGER NOT NULL DEFAULT 0"
+    );
+  }
 }
 
 async function ensureRequestLogsUpstreamColumn(db: GatewayDb): Promise<void> {
@@ -78,6 +89,7 @@ export async function initSchema(db: GatewayDb): Promise<void> {
         upstream_model TEXT NOT NULL,
         bucket_key TEXT NOT NULL,
         used_tokens INTEGER NOT NULL DEFAULT 0,
+        in_flight_token_requests INTEGER NOT NULL DEFAULT 0,
         used_req INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         UNIQUE(upstream_model, bucket_key)
@@ -104,6 +116,7 @@ export async function initSchema(db: GatewayDb): Promise<void> {
   );
 
   await migrateQuotaCountersToUpstreamModel(db);
+  await ensureQuotaCountersInflightColumn(db);
   await ensureRequestLogsUpstreamColumn(db);
   await db.raw.execute(
     "CREATE INDEX IF NOT EXISTS idx_quota_counters_upstream_bucket ON quota_counters(upstream_model, bucket_key)"

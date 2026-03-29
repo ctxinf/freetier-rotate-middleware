@@ -2,6 +2,7 @@ import type { GatewayDb } from "../storage/db.js";
 import { createLogger } from "../logging.js";
 import type { RouteItem, StrategyType } from "./router.js";
 import { parseCycleDays, resolveCycleWindow } from "./cycle.js";
+import { normalizeTokenLimitToTokens } from "./route-config.js";
 
 type TokenDayConfig = {
   dailyTokenLimit: number;
@@ -37,22 +38,7 @@ function parseConfig(strategyType: StrategyType, configJson: string): TokenDayCo
   }
 
   if (strategyType === "token_day") {
-    let dailyTokenLimit: number = NaN;
-
-    if (obj.dailyTokenLimitTokens !== undefined) {
-      dailyTokenLimit = Number(obj.dailyTokenLimitTokens);
-    } else if (obj.dailyTokenLimitM !== undefined) {
-      dailyTokenLimit = Number(obj.dailyTokenLimitM) * 1_000_000;
-    } else if (typeof obj.dailyTokenLimit === "string") {
-      const s = obj.dailyTokenLimit.trim();
-      const m = s.match(/^([0-9]+(?:\.[0-9]+)?)\s*([mM])$/);
-      if (m) dailyTokenLimit = Number(m[1]) * 1_000_000;
-      else dailyTokenLimit = Number(s);
-    } else {
-      const raw = Number(obj.dailyTokenLimit);
-      // Prefer M (millions) for config ergonomics; keep backward-compat for large token counts.
-      dailyTokenLimit = raw >= 1_000_000 ? raw : raw * 1_000_000;
-    }
+    const dailyTokenLimit = normalizeTokenLimitToTokens(obj);
 
     if (!Number.isFinite(dailyTokenLimit) || dailyTokenLimit <= 0) {
       throw new Error("token_day missing dailyTokenLimit (supports dailyTokenLimitM / dailyTokenLimitTokens / '2M')");
@@ -117,16 +103,21 @@ export function createQuotaService(db: GatewayDb) {
     }
   }
 
-  async function canStartTokenCycle(upstreamModel: string, bucketKey: string, dailyLimit: number): Promise<boolean> {
+  async function acquireTokenCycleSlot(upstreamModel: string, bucketKey: string, dailyLimit: number): Promise<boolean> {
     const tx = await db.raw.transaction("write");
     try {
       await ensureCounterRow(tx, upstreamModel, bucketKey);
-      const res = await tx.execute({
-        sql: "SELECT used_tokens FROM quota_counters WHERE upstream_model = ? AND bucket_key = ? LIMIT 1",
-        args: [upstreamModel, bucketKey]
+      const reserveRes = await tx.execute({
+        sql: `UPDATE quota_counters
+              SET in_flight_token_requests = in_flight_token_requests + 1,
+                  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              WHERE upstream_model = ?
+                AND bucket_key = ?
+                AND used_tokens < ?
+                AND in_flight_token_requests = 0`,
+        args: [upstreamModel, bucketKey, dailyLimit]
       });
-      const used = Number((res?.rows?.[0] as any)?.used_tokens ?? 0);
-      const ok = Number.isFinite(used) ? used < dailyLimit : true;
+      const ok = Number(reserveRes?.rowsAffected ?? 0) === 1;
       await tx.commit();
       return ok;
     } finally {
@@ -134,12 +125,52 @@ export function createQuotaService(db: GatewayDb) {
     }
   }
 
-  async function chargeTokens(upstreamModel: string, bucketKey: string, actual: number): Promise<void> {
-    await ensureCounterRow(db.raw, upstreamModel, bucketKey);
-    await db.raw.execute({
-      sql: "UPDATE quota_counters SET used_tokens = used_tokens + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE upstream_model = ? AND bucket_key = ?",
-      args: [actual, upstreamModel, bucketKey]
-    });
+  async function finalizeTokenCycle(charge: TokenDayCharge, usage: Usage | undefined): Promise<void> {
+    const tx = await db.raw.transaction("write");
+    try {
+      await ensureCounterRow(tx, charge.upstreamModel, charge.dayBucket);
+      const actual = usage?.total_tokens;
+      if (typeof actual === "number" && Number.isFinite(actual) && actual >= 0) {
+        await tx.execute({
+          sql: `UPDATE quota_counters
+                SET used_tokens = used_tokens + ?,
+                    in_flight_token_requests = CASE
+                      WHEN in_flight_token_requests > 0 THEN in_flight_token_requests - 1
+                      ELSE 0
+                    END,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE upstream_model = ?
+                  AND bucket_key = ?`,
+          args: [actual, charge.upstreamModel, charge.dayBucket]
+        });
+        await tx.commit();
+        log.debug("token_day charged", {
+          upstreamModel: charge.upstreamModel,
+          bucketKey: charge.dayBucket,
+          totalTokens: actual
+        });
+        return;
+      }
+
+      await tx.execute({
+        sql: `UPDATE quota_counters
+              SET in_flight_token_requests = CASE
+                    WHEN in_flight_token_requests > 0 THEN in_flight_token_requests - 1
+                    ELSE 0
+                  END,
+                  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+              WHERE upstream_model = ?
+                AND bucket_key = ?`,
+        args: [charge.upstreamModel, charge.dayBucket]
+      });
+      await tx.commit();
+      log.debug("token_day slot released without usage", {
+        upstreamModel: charge.upstreamModel,
+        bucketKey: charge.dayBucket
+      });
+    } finally {
+      tx.close();
+    }
   }
 
   async function acquire(routeItem: RouteItem, clientBody: any, now: Date = new Date()): Promise<AcquireHandle> {
@@ -171,7 +202,7 @@ export function createQuotaService(db: GatewayDb) {
         return { ok: false, reason: "invalid config" };
       }
       const cycle = resolveCycleWindow(now, cfg.cycleDays);
-      const ok = await canStartTokenCycle(routeItem.upstreamModel, cycle.bucketKey, cfg.dailyTokenLimit);
+      const ok = await acquireTokenCycleSlot(routeItem.upstreamModel, cycle.bucketKey, cfg.dailyTokenLimit);
       if (!ok) return { ok: false, reason: "token quota exceeded" };
 
       return {
@@ -186,11 +217,7 @@ export function createQuotaService(db: GatewayDb) {
 
   async function finalize(charge: TokenDayCharge | undefined, usage: Usage | undefined): Promise<void> {
     if (!charge) return;
-    const actual = usage?.total_tokens;
-    if (typeof actual === "number" && Number.isFinite(actual) && actual >= 0) {
-      await chargeTokens(charge.upstreamModel, charge.dayBucket, actual);
-      log.debug("token_day charged", { upstreamModel: charge.upstreamModel, bucketKey: charge.dayBucket, totalTokens: actual });
-    }
+    await finalizeTokenCycle(charge, usage);
   }
 
   return { acquire, finalize };

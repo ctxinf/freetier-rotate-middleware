@@ -1,13 +1,14 @@
 {
   "name": "freetier-rotate-middleware",
-  "private": true,
-  "version": "0.1.0",
+  "private": false,
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/src/server.js",
     "build": "tsc -p tsconfig.json",
-    "test:api": "tsx script/test_api.ts"
+    "test:api": "tsx script/test_api.ts",
+    "set:usage": "node --import tsx script/set_model_usage.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",

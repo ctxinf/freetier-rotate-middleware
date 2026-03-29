@@ -114,7 +114,7 @@
       "entryModel": "group-free",
       "routes": [
         { "upstreamModel": "doubao-seed-2-0-pro-260215", "priority": 100 },
-        { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 95 },
+        { "upstreamModel": "doubao-seed-2-0-code-preview-260215", "priority": 0 },
         { "upstreamModel": "glm-4-7-251222", "priority": 92 },
         { "upstreamModel": "doubao-seed-code-preview-251028", "priority": 90 },
         { "upstreamModel": "doubao-seed-1-8-251228", "priority": 85 },
