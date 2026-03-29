@@ -251,8 +251,6 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
     const routeGroups = new Map<string, Array<Array<string | number | null | undefined>>>();
     for (const ri of payload.routes as any[]) {
       const enabled = ri.enabled === 1 ? "🟢" : "";
-      const cycleStart = ri.cycle?.cycleStartIso ?? "-";
-      const cycleLeft = formatDurationMs(ri.cycle?.cycleRemainingMs);
       let usage = "-";
 
       if (ri.strategyType === "req_min_day") {
@@ -268,14 +266,14 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
 
       const entryModel = String(ri.entryModel);
       if (!routeGroups.has(entryModel)) routeGroups.set(entryModel, []);
-      routeGroups.get(entryModel)!.push([enabled, ri.upstreamModel, ri.strategyType, ri.priority, cycleStart, cycleLeft, usage]);
+      routeGroups.get(entryModel)!.push([enabled, ri.upstreamModel, ri.strategyType, ri.priority, usage]);
     }
 
     const routeGroupsHtml = Array.from(routeGroups.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(
       ([entryModel, rows]) => `<h3>entry_model: ${escapeHtml(entryModel)}</h3>${renderTable(
-          ["enabled", "upstream_model", "strategy", "priority", "cycle_start", "cycle_left", "usage"],
+          ["enabled", "upstream_model", "strategy", "priority", "usage"],
           rows,
           { fitWidth: true }
         )}`
