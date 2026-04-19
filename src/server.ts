@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { loadConfig } from "./config.js";
 import { registerAdminRestRoutes } from "./admin/rest.js";
 import { createLogger, initLogging, sanitizeError } from "./logging.js";
@@ -16,6 +17,14 @@ const ctx = await createAppContext(config);
 
 const app = new Hono();
 const baseApp = config.basePath === "/" ? app : app.basePath(config.basePath);
+
+app.use("*", cors({
+  origin: "*",
+  allowMethods: ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowHeaders: ["Authorization", "Content-Type", "X-Request-Id"],
+  exposeHeaders: ["Content-Type", "X-Request-Id"],
+  maxAge: 86400
+}));
 
 app.use("*", async (c, next) => {
   const started = Date.now();
