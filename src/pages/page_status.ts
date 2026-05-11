@@ -145,7 +145,21 @@ async function buildStatusPayload(app: AppContext, config: AppConfig, now: Date)
   const recentCounters = (recentCountersRes?.rows as any[]) ?? [];
 
   const recentRequestLogsRes = await app.db.raw.execute(
-    "SELECT request_id, route_item_id, upstream_model, status, prompt_tokens, completion_tokens, total_tokens, latency_ms, created_at FROM request_logs ORDER BY created_at DESC LIMIT 100"
+    `SELECT
+       rl.request_id,
+       rl.route_item_id,
+       ri.public_model AS entry_model,
+       rl.upstream_model,
+       rl.status,
+       rl.prompt_tokens,
+       rl.completion_tokens,
+       rl.total_tokens,
+       rl.latency_ms,
+       rl.created_at
+     FROM request_logs rl
+     LEFT JOIN route_items ri ON ri.id = rl.route_item_id
+     ORDER BY rl.created_at DESC
+     LIMIT 100`
   );
   const recentRequestLogs = (recentRequestLogsRes?.rows as any[]) ?? [];
 
@@ -266,14 +280,14 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
 
       const entryModel = String(ri.entryModel);
       if (!routeGroups.has(entryModel)) routeGroups.set(entryModel, []);
-      routeGroups.get(entryModel)!.push([enabled, ri.upstreamModel, ri.strategyType, ri.priority, usage]);
+      routeGroups.get(entryModel)!.push([enabled, ri.id, ri.upstreamModel, ri.strategyType, ri.priority, usage]);
     }
 
     const routeGroupsHtml = Array.from(routeGroups.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(
       ([entryModel, rows]) => `<h3>entry_model: ${escapeHtml(entryModel)}</h3>${renderTable(
-          ["enabled", "upstream_model", "strategy", "priority", "usage"],
+          ["enabled", "id", "upstream_model", "strategy", "priority", "usage"],
           rows,
           { fitWidth: true }
         )}`
@@ -294,6 +308,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
         r.created_at,
         r.status,
         r.route_item_id,
+        r.entry_model,
         r.upstream_model,
         r.total_tokens,
         r.latency_ms,
@@ -347,7 +362,7 @@ export function registerStatusRoutes(app: Hono, ctx: AppContext, config: AppConf
 
     <h2>request_logs_recent (top 50)</h2>
     ${renderTable(
-      ["created_at", "status", "route_item_id", "upstream_model", "total_tokens", "lat_ms", "request_id"],
+      ["created_at", "status", "route_item_id", "entry_model", "upstream_model", "total_tokens", "lat_ms", "request_id"],
       reqRows
     )}
   </body>
