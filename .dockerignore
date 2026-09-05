@@ -1,7 +1,4 @@
-node_modules
+target
 data
-dist
 .git
-npm-debug.log
-.env
-.env.*
+config.toml

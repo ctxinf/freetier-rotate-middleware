@@ -1,0 +1,414 @@
+/* Vercel-style UI Components */
+
+/* ================= Buttons ================= */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background-color: var(--bg-surface);
+  color: var(--fg-primary);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.btn:active:not(:disabled) {
+  background-color: var(--bg-active);
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Button Variants */
+.btn-primary {
+  background-color: #000000;
+  color: #ffffff;
+  border-color: #000000;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #27272a;
+  border-color: #27272a;
+  color: #ffffff;
+}
+
+/* Creation actions use the product accent, distinct from black save actions. */
+.btn-add {
+  background-color: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.btn-add:hover:not(:disabled) {
+  background-color: #0062d6;
+  border-color: #0062d6;
+  color: #ffffff;
+}
+
+.btn-secondary {
+  background-color: var(--bg-surface);
+  border-color: var(--border-default);
+  color: var(--fg-primary);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--fg-secondary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--bg-subtle);
+  color: var(--fg-primary);
+  border-color: transparent;
+}
+
+.btn-danger-ghost {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--fg-muted);
+}
+
+.btn-danger-ghost:hover:not(:disabled) {
+  background-color: var(--danger-bg);
+  color: var(--danger-fg);
+  border-color: var(--danger-border);
+}
+
+.btn-danger {
+  background-color: var(--bg-surface);
+  border-color: var(--border-default);
+  color: var(--danger-fg);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+
+.btn-sm {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+}
+
+.btn-icon {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.btn-icon-sm {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* ================= Form Controls ================= */
+.input, .select, select, input[type="text"], input[type="number"], input[type="time"] {
+  height: 32px;
+  padding: 0 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--fg-primary);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="number"] {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.input:focus, .select:focus, select:focus, input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 1px var(--border-focus);
+}
+
+.input:disabled, input:disabled, select:disabled {
+  background-color: var(--bg-subtle);
+  color: var(--fg-muted);
+  cursor: not-allowed;
+  border-color: var(--border-subtle);
+}
+
+/* Duration compound input */
+.duration-group {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+  height: 32px;
+}
+
+.duration-group:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 1px var(--border-focus);
+}
+
+.duration-group input {
+  border: none !important;
+  box-shadow: none !important;
+  height: 100% !important;
+  width: 65px;
+  padding: 0 8px;
+  background: transparent;
+  outline: none;
+}
+
+.duration-group select {
+  border: none !important;
+  border-left: 1px solid var(--border-default) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  height: 100% !important;
+  padding: 0 8px;
+  background-color: var(--bg-subtle);
+  color: var(--fg-secondary);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* Custom Clean Switch & Checkbox */
+.custom-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--fg-secondary);
+}
+
+.custom-checkbox input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background-color: var(--bg-surface);
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+  margin: 0;
+  transition: all 0.15s ease;
+}
+
+.custom-checkbox input[type="checkbox"]::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  transform: scale(0);
+  transition: 120ms transform ease-in-out;
+  box-shadow: inset 1em 1em #ffffff;
+  transform-origin: center;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+
+.custom-checkbox input[type="checkbox"]:checked {
+  background-color: #000000;
+  border-color: #000000;
+}
+
+.custom-checkbox input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+/* ================= Badges & Pills ================= */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
+.badge-neutral {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  color: var(--fg-secondary);
+}
+
+.badge-dark {
+  background-color: #09090b;
+  color: #ffffff;
+}
+
+.badge-ok {
+  background-color: var(--ok-bg);
+  border: 1px solid var(--ok-border);
+  color: var(--ok-fg);
+}
+
+.badge-warn {
+  background-color: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-fg);
+}
+
+.badge-danger {
+  background-color: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger-fg);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-dot.ok {
+  background-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.status-dot.warn {
+  background-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.status-dot.danger {
+  background-color: #f43f5e;
+  box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.2);
+}
+
+.status-dot.muted {
+  background-color: var(--fg-subtle);
+}
+
+/* Index Number Badge */
+.num-idx {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 4px;
+  background-color: var(--bg-subtle);
+  color: var(--fg-primary);
+  border: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+.num-idx.main-idx {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  font-weight: 800;
+  border-radius: 6px;
+  background-color: #f4f4f5;
+  color: #09090b;
+  border: 1px solid var(--border-strong);
+}
+
+/* ================= Cards ================= */
+.panel-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  overflow: hidden;
+}
+
+/* ================= Toast Notification ================= */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background-color: #09090b;
+  color: #ffffff;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.toast.error {
+  background-color: #e11d48;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ================= SVG Icon Utilities ================= */
+.icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+  stroke: currentColor;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.icon-sm {
+  width: 12px;
+  height: 12px;
+}
+
+.icon-md {
+  width: 16px;
+  height: 16px;
+}

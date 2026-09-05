@@ -4,9 +4,15 @@ services:
     container_name: freetier-rotate-middleware
     ports:
       - "3001:3001"
+    # The config file is the single source of truth and the gateway writes back
+    # to it (from the web UI or MCP), so it is mounted read-write as a file.
     volumes:
-      - ./config:/app/config
+      - ./config.toml:/app/config.toml
       - gateway-data:/app/data
+    environment:
+      # Time-window limits and the times shown in the UI follow this zone.
+      # Leave it to the config file's `timezone`, or pin it here.
+      TZ: ${TZ:-UTC}
     restart: unless-stopped
 
 volumes:

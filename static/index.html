@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>freetier-rotate-middleware</title>
+<link rel="icon" type="image/svg+xml" href="./icon.svg?v=20260904-1">
+<script src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js" defer></script>
+<link rel="stylesheet" href="./app.css?v=20260904-19">
+<script src="./components.js?v=20260903-7"></script>
+</head>
+
+<body x-data="gateway()" x-init="init()">
+
+<!-- ============ Header Bar ============ -->
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand-section">
+      <img class="brand-logo" src="./icon.svg?v=20260904-1" alt="" aria-hidden="true" width="24" height="24">
+      <div class="brand-title">
+        <span>freetier-rotate-middleware</span>
+        <span class="badge badge-neutral">v2</span>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab-btn" :class="{ active: tab === 'status' }" @click="navigateTab('status')">
+        状态
+      </button>
+      <button class="nav-tab-btn" :class="{ active: tab === 'config' }" @click="navigateTab('config')">
+        配置
+      </button>
+      <button class="nav-tab-btn" :class="{ active: tab === 'logs' }" @click="navigateTab('logs')">
+        调用历史
+      </button>
+    </nav>
+
+    <div class="header-spacer"></div>
+
+    <!-- Right-aligned Gateway Clock & Connection info -->
+    <div class="header-actions">
+      <tz-badge x-effect="$el.setAttribute('tz', clock.timezone || '');
+                          $el.setAttribute('offset', clock.offset_secs ?? 0);
+                          $el.setAttribute('source', clock.source || '')"></tz-badge>
+    </div>
+  </div>
+</header>
+
+<!-- ============ Main Content Area ============ -->
+<main class="main-content">
+
+  <!-- Toast Notification -->
+  <div class="toast-container" x-show="msg" x-transition>
+    <div class="toast" :class="msgKind" @click="msg = ''">
+      <template x-if="msgKind === 'ok'">
+        <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </template>
+      <template x-if="msgKind === 'error'">
+        <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      </template>
+      <span x-text="msg"></span>
+    </div>
+  </div>
+
+  <!-- ==================== 1. 状态 (Status Tab) ==================== -->
+  <section x-show="tab === 'status'">
+    <div class="section-header">
+      <div class="section-title-wrap">
+        <h2 class="section-title">状态</h2>
+      </div>
+      <div class="section-actions">
+        <button class="btn btn-secondary btn-sm" @click="loadStatus()">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          刷新
+        </button>
+        <label class="custom-checkbox">
+          <input type="checkbox" x-model="autoRefresh">
+          <span>自动刷新</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Quick Stats Cards -->
+    <div class="status-stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+          最近一小时调用
+        </div>
+        <div class="stat-value" x-text="status.requests_last_hour ?? 0"></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+          上游模型可用率
+        </div>
+        <div class="stat-value">
+          <span x-text="activeUpstreamsCount()"></span>
+          <span style="font-size: 14px; color: var(--fg-muted);" x-text="`/ ${(status.upstreams || []).length}`"></span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          配置文件路径
+        </div>
+        <div class="stat-value" style="font-size: 13px; font-weight: 500; font-family: var(--font-mono); word-break: break-all;" x-text="status.config_path ?? '-'"></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg>
+          SQLite 数据库路径
+        </div>
+        <div class="stat-value" style="font-size: 13px; font-weight: 500; font-family: var(--font-mono); word-break: break-all;" x-text="status.database_path ?? '-'"></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"></path><path d="M8 8h8M8 12h8M8 16h5"></path></svg>
+          路径前缀
+        </div>
+        <div class="stat-value" style="font-size: 13px; font-weight: 500; font-family: var(--font-mono); word-break: break-all;" x-text="status.path_prefix ?? '-'"></div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 8h10M7 12h10M7 16h6"></path></svg>
+          Endpoint
+        </div>
+        <button type="button" class="stat-value status-copy" title="点击复制 Endpoint"
+                @click="copyText(endpointUrl())" x-text="endpointUrl()"></button>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"></path><circle cx="12" cy="12" r="9"></circle></svg>
+          上游 Base URL
+        </div>
+        <button type="button" class="stat-value status-copy" title="点击复制上游 Base URL"
+                @click="copyText(status.upstream_base_url ?? '')" x-text="status.upstream_base_url ?? '-'"></button>
+      </div>
+    </div>
+
+    <!-- Section 1: 已定义的入口模型 -->
+    <div class="sub-section-header">
+      <div>
+        <h3>入口模型</h3>
+      </div>
+    </div>
+
+    <div class="groups-grid">
+      <template x-for="(g, gi) in groups" :key="g.entry_model">
+        <article class="group-status-card">
+          <div class="group-card-head">
+            <div class="group-name-wrap">
+              <span class="num-idx main-idx" x-text="gi + 1"></span>
+              <span class="group-name" x-text="g.entry_model"></span>
+            </div>
+            <span class="badge badge-neutral" x-text="`${g.routes.length} 个上游`"></span>
+          </div>
+
+          <div class="group-routes-list">
+            <template x-for="(r, ri) in g.routes" :key="r.upstream + '-' + ri">
+              <div class="group-route-item" :class="{ disabled: !r.enabled }">
+                <div class="route-left">
+                  <span class="num-idx" style="width: 18px; height: 18px; font-size: 11px;" x-text="ri + 1"></span>
+                  <span class="route-name" x-text="upstreamName(r.upstream)"></span>
+                </div>
+                <div class="route-meta">
+                  <span class="status-dot" :class="r.enabled ? 'ok' : 'muted'"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+        </article>
+      </template>
+    </div>
+
+    <!-- Section 2: 上游模型运行状态 -->
+    <div class="sub-section-header">
+      <div>
+        <h3>上游模型</h3>
+      </div>
+    </div>
+
+    <div class="upstreams-status-grid">
+      <template x-for="(u, ui) in (status.upstreams || [])" :key="u.model">
+        <article class="upstream-status-card" :class="{ unavailable: isUnavailable(u), disabled: !u.enabled }">
+          <div class="upstream-card-head">
+            <div class="upstream-info">
+              <div class="upstream-title-row">
+                <span class="num-idx main-idx" x-text="ui + 1"></span>
+                <span class="upstream-model-name" x-text="u.model"></span>
+              </div>
+            </div>
+
+            <div>
+              <template x-if="!u.enabled">
+                <span class="badge badge-neutral"><span class="status-dot muted"></span> 未启用</span>
+              </template>
+              <template x-if="u.enabled && !isUnavailable(u)">
+                <span class="badge badge-ok"><span class="status-dot ok"></span> Ready</span>
+              </template>
+              <template x-if="u.enabled && isUnavailable(u)">
+                <span class="badge badge-danger"><span class="status-dot danger"></span> PASS</span>
+              </template>
+            </div>
+          </div>
+
+          <div class="status-rules-container">
+            <template x-if="!u.limits.length">
+              <div class="empty-rules-hint">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span>无额外限制规则，持续参与路由分发。</span>
+              </div>
+            </template>
+
+            <template x-for="(l, li) in u.limits" :key="li">
+              <div class="status-rule-item" :class="{ failed: !rulePasses(l) }">
+                <div class="rule-header-row">
+                  <div class="rule-type-badge">
+                    <span class="status-dot" :class="rulePasses(l) ? 'ok' : 'danger'"></span>
+                    <span x-text="`${li + 1}. ${limitLabel(l.type)}`"></span>
+                  </div>
+
+                  <!-- Metrics / Indicators based on type -->
+                  <template x-if="l.type === 'frequency' || l.type === 'tokens'">
+                    <span class="rule-metric-val" x-text="`${fmt(l.used)} / ${fmt(l.limit)}`"></span>
+                  </template>
+                  <template x-if="l.type === 'time_window'">
+                    <span class="badge" :class="l.blocked ? 'badge-danger' : 'badge-neutral'" x-text="l.blocked ? `暂停至 ${l.until_local}` : '未命中'"></span>
+                  </template>
+                  <template x-if="l.type === 'error_backoff'">
+                    <div class="flex-gap-8">
+                      <span class="badge" :class="l.blocked ? 'badge-danger' : 'badge-neutral'" x-text="l.blocked ? `熔断中 (第 ${l.consecutive_trips} 次)` : '未命中'"></span>
+                      <button x-show="l.blocked" class="btn btn-sm btn-ghost" style="padding: 2px 6px; font-size: 11px;" @click="clearBackoff(u.model)">立即恢复</button>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- Progress Bar for frequency & tokens -->
+                <template x-if="l.type === 'frequency' || l.type === 'tokens'">
+                  <div class="progress-track">
+                    <div class="progress-bar" :style="`width: ${Math.min(100, (l.used / l.limit) * 100)}%`" :class="{ warn: !rulePasses(l) }"></div>
+                  </div>
+                </template>
+
+                <p class="rule-desc-text" x-text="statusRuleText(l)"></p>
+              </div>
+            </template>
+          </div>
+        </article>
+      </template>
+    </div>
+  </section>
+
+  <!-- ==================== 2. 配置 (Config Tab) ==================== -->
+  <section x-show="tab === 'config'">
+    <div class="config-header-bar">
+      <div class="big-tab-switch">
+        <button type="button" class="big-tab-btn" :class="{ active: configFilter === 'groups' }" @click="navigateConfig('groups')">
+          入口模型
+          <span class="tab-badge" x-text="groups.length"></span>
+        </button>
+        <button type="button" class="big-tab-btn" :class="{ active: configFilter === 'upstreams' }" @click="navigateConfig('upstreams')">
+          上游模型
+          <span class="tab-badge" x-text="(upstreams || []).length"></span>
+        </button>
+      </div>
+
+      <div class="config-header-actions">
+        <button x-show="configFilter === 'groups'" class="btn btn-add" @click="newGroup()">
+          + 新增入口模型
+        </button>
+        <button x-show="configFilter === 'upstreams'" class="btn btn-add" @click="newUpstream()">
+          + 新增上游
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ 入口模型 ============ -->
+    <div x-show="configFilter === 'groups'" class="config-item-list">
+      <template x-for="(g, gi) in groups" :key="g.entry_model">
+        <div class="config-card">
+          <div class="config-card-header">
+            <div class="config-card-title">
+              <span class="num-idx main-idx" x-text="gi + 1"></span>
+              <button type="button" class="entry-model-copy" title="点击复制入口模型名称"
+                      @click="copyEntryModel(g.entry_model)">
+                <code x-text="g.entry_model"></code>
+              </button>
+            </div>
+            <div class="flex-gap-8">
+              <button class="btn btn-sm btn-primary" @click="saveGroup(g)">保存</button>
+              <button class="btn btn-sm btn-danger-ghost btn-icon-sm" title="删除入口模型" @click="deleteGroup(g.entry_model)">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="config-card-body compact-list">
+            <div class="routes-table-wrap">
+              <template x-for="(r, ri) in g.routes" :key="ri">
+                <div class="route-row">
+                  <div class="route-row-left">
+                    <span class="num-idx" x-text="ri + 1"></span>
+
+                    <!-- Target Upstream Select -->
+                    <select class="select route-upstream-select" x-model="r.upstream">
+                      <template x-for="u in upstreams" :key="u.model">
+                        <option :value="u.model" x-text="u.model"></option>
+                      </template>
+                    </select>
+                  </div>
+
+                  <div class="route-row-right">
+                    <!-- Priority Input -->
+                    <div class="route-priority-input">
+                      <span>优先级</span>
+                      <input class="input prio-input" type="number" x-model.number="r.priority">
+                    </div>
+
+                    <!-- Enabled Checkbox -->
+                    <label class="custom-checkbox">
+                      <input type="checkbox" x-model="r.enabled">
+                      <span>启用</span>
+                    </label>
+
+                    <!-- Reorder buttons -->
+                    <div class="reorder-btns">
+                      <button class="btn btn-icon-sm btn-ghost" title="上移" @click="move(g.routes, ri, -1)" :disabled="ri === 0">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                      </button>
+                      <button class="btn btn-icon-sm btn-ghost" title="下移" @click="move(g.routes, ri, 1)" :disabled="ri === g.routes.length - 1">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </button>
+                    </div>
+
+                    <!-- Remove Route -->
+                    <button class="btn btn-icon-sm btn-danger-ghost" title="移除此路由" @click="g.routes.splice(ri, 1)">
+                      <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <div class="group-card-footer">
+              <button class="btn btn-add btn-sm" @click="addRoute(g)">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                添加上游路由
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ============ 上游模型与限流 (Upstreams & Limits) ============ -->
+    <div x-show="configFilter === 'upstreams'" class="upstream-config-layout">
+      <div class="upstream-config-list">
+        <template x-for="(u, ui) in upstreams" :key="u.model">
+          <div class="config-card upstream-anchor" :id="upstreamAnchor(u.model)" :class="{ disabled: !u.enabled }">
+          <!-- Upstream Meta Info Header -->
+          <div class="config-card-header">
+            <div class="upstream-meta-fields">
+              <span class="num-idx main-idx" x-text="ui + 1"></span>
+
+              <div class="upstream-field-group">
+                <span style="font-weight: 600;">模型名</span>
+                <code class="entry-model-val" x-text="u.model"></code>
+              </div>
+
+              <label class="custom-checkbox">
+                <input type="checkbox" x-model="u.enabled">
+                <span style="font-weight: 600;">启用上游</span>
+              </label>
+            </div>
+
+            <div class="flex-gap-8">
+              <button class="btn btn-primary btn-sm" @click="saveUpstream(u)">保存</button>
+              <button class="btn btn-sm btn-danger-ghost btn-icon-sm" title="删除上游" @click="deleteUpstream(u.model)">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Limits Section -->
+          <div class="limits-section">
+            <div class="limits-toolbar">
+              <div class="limits-toolbar-title">
+                <svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                <span>限流与熔断规则（全部通过才放行）</span>
+              </div>
+
+              <div class="limits-add-actions">
+                <button class="btn btn-add btn-sm" @click="addLimit(u, 'frequency')">
+                  + 频率限制
+                </button>
+                <button class="btn btn-add btn-sm" @click="addLimit(u, 'tokens')">
+                  + Token 配额
+                </button>
+                <button class="btn btn-add btn-sm" @click="addLimit(u, 'time_window')">
+                  + 禁止时段
+                </button>
+                <button class="btn btn-add btn-sm" @click="addLimit(u, 'error_backoff')">
+                  + 错误熔断
+                </button>
+              </div>
+            </div>
+
+            <div class="limits-list">
+              <template x-if="!u.limits.length">
+                <div class="empty-limits-box">
+                  当前上游未设置限流规则，只要启用将无条件参与分发。
+                </div>
+              </template>
+
+              <template x-for="(l, li) in u.limits" :key="li">
+                <div class="limit-card">
+                  <div class="limit-card-top">
+                    <div class="limit-type-pill">
+                      <span class="num-idx rule-number" x-text="li + 1"></span>
+                      <span x-text="limitLabel(l.type)"></span>
+                    </div>
+
+                    <button class="btn btn-icon-sm btn-danger-ghost" title="删除规则" @click="u.limits.splice(li, 1)">
+                      <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                  </div>
+
+                  <!-- Frequency / Tokens inputs -->
+                  <template x-if="l.type === 'frequency' || l.type === 'tokens'">
+                    <div class="limit-inputs-row">
+                      <div class="limit-field">
+                        <span>配额上限</span>
+                        <input class="input" style="width: 100px;" x-model="l.count">
+                      </div>
+
+                      <div class="limit-field">
+                        <span>统计周期</span>
+                        <div class="duration-group">
+                          <input type="number" min="1" :value="durationAmount(l.period)" @input="setDuration(l, 'period', $event.target.value, durationUnit(l.period))">
+                          <select :value="durationUnit(l.period)" @change="setDuration(l, 'period', durationAmount(l.period), $event.target.value)">
+                            <option value="s">秒</option>
+                            <option value="min">分钟</option>
+                            <option value="h">小时</option>
+                            <option value="d">天</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <template x-if="l.type === 'tokens'">
+                        <div class="flex-gap-8" style="align-items: center;">
+                          <label class="custom-checkbox">
+                            <input type="checkbox" :checked="!!l.weight" @change="l.weight = $event.target.checked ? { output: 1, cache_read: 1, cache_write: 1 } : null">
+                            <span>开启加权计费</span>
+                          </label>
+
+                          <template x-if="l.weight">
+                            <div class="weight-box">
+                              <div class="limit-field">
+                                <span>输出×</span>
+                                <input class="input" style="width: 50px; height: 26px; padding: 0 4px;" x-model.number="l.weight.output">
+                              </div>
+                              <div class="limit-field">
+                                <span>缓存命中×</span>
+                                <input class="input" style="width: 50px; height: 26px; padding: 0 4px;" x-model.number="l.weight.cache_read">
+                              </div>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+
+                  <!-- Time Window inputs -->
+                  <template x-if="l.type === 'time_window'">
+                    <div class="time-ranges-wrap">
+                      <div class="section-desc">
+                        禁止时段（以网关时区 <span style="font-family: var(--font-mono); color: var(--fg-primary);" x-text="clock.timezone || 'UTC'"></span> 为准）：
+                      </div>
+
+                      <template x-for="(w, wi) in l.forbidden" :key="wi">
+                        <div class="time-range-row">
+                          <div class="limit-field">
+                            <span>从</span>
+                            <input class="input" type="time" x-model="w.start">
+                          </div>
+                          <div class="limit-field">
+                            <span>至</span>
+                            <input class="input" type="time" x-model="w.end">
+                          </div>
+                          <template x-if="w.end <= w.start">
+                            <span class="badge badge-warn">跨午夜生效</span>
+                          </template>
+                          <button class="btn btn-icon-sm btn-danger-ghost" title="删除该时段" @click="l.forbidden.splice(wi, 1)">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                          </button>
+                        </div>
+                      </template>
+
+                      <div class="flex-between" style="flex-wrap: wrap; margin-top: 4px;">
+                        <button class="btn btn-add btn-sm" @click="l.forbidden.push({ start: '08:00', end: '10:00' })">
+                          + 添加时段
+                        </button>
+
+                        <div class="flex-gap-8" style="align-items: center;">
+                          <span class="section-desc">生效星期：</span>
+                          <div class="weekday-selector">
+                            <template x-for="d in [1, 2, 3, 4, 5, 6, 7]" :key="d">
+                              <button type="button" class="weekday-btn" :class="{ active: (l.days || []).includes(d) }" @click="toggleDay(l, d, !(l.days || []).includes(d))" x-text="weekdayName(d)"></button>
+                            </template>
+                          </div>
+                          <span class="section-desc" x-show="!(l.days || []).length">（未选择则每天生效）</span>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- Error Backoff inputs -->
+                  <template x-if="l.type === 'error_backoff'">
+                    <div class="limit-inputs-row">
+                      <div class="limit-field">
+                        <span>滑动窗口</span>
+                        <input class="input" type="number" style="width: 60px;" x-model.number="l.window">
+                        <span>次</span>
+                      </div>
+
+                      <div class="limit-field">
+                        <span>失败阈值</span>
+                        <input class="input" type="number" style="width: 60px;" x-model.number="l.threshold">
+                        <span>次</span>
+                      </div>
+
+                      <div class="limit-field">
+                        <span>退避类型</span>
+                        <select class="select" x-model="l.backoff.type">
+                          <option value="exponential">指数递增退避</option>
+                          <option value="fixed">固定间隔退避</option>
+                        </select>
+                      </div>
+
+                      <template x-if="l.backoff.type === 'exponential'">
+                        <div class="limit-inputs-row">
+                          <div class="limit-field">
+                            <span>初始暂停</span>
+                            <div class="duration-group">
+                              <input type="number" min="1" :value="durationAmount(l.backoff.start)" @input="setDuration(l.backoff, 'start', $event.target.value, durationUnit(l.backoff.start))">
+                              <select :value="durationUnit(l.backoff.start)" @change="setDuration(l.backoff, 'start', durationAmount(l.backoff.start), $event.target.value)">
+                                <option value="s">秒</option>
+                                <option value="min">分</option>
+                                <option value="h">时</option>
+                                <option value="d">天</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div class="limit-field">
+                            <span>暂停上限</span>
+                            <div class="duration-group">
+                              <input type="number" min="1" :value="durationAmount(l.backoff.max)" @input="setDuration(l.backoff, 'max', $event.target.value, durationUnit(l.backoff.max))">
+                              <select :value="durationUnit(l.backoff.max)" @change="setDuration(l.backoff, 'max', durationAmount(l.backoff.max), $event.target.value)">
+                                <option value="s">秒</option>
+                                <option value="min">分</option>
+                                <option value="h">时</option>
+                                <option value="d">天</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+
+                      <template x-if="l.backoff.type === 'fixed'">
+                        <div class="limit-field">
+                          <span>暂停时长</span>
+                          <div class="duration-group">
+                            <input type="number" min="1" :value="durationAmount(l.backoff.value)" @input="setDuration(l.backoff, 'value', $event.target.value, durationUnit(l.backoff.value))">
+                            <select :value="durationUnit(l.backoff.value)" @change="setDuration(l.backoff, 'value', durationAmount(l.backoff.value), $event.target.value)">
+                              <option value="s">秒</option>
+                              <option value="min">分</option>
+                              <option value="h">时</option>
+                              <option value="d">天</option>
+                            </select>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+
+                  <!-- Understated rule explanation -->
+                  <div class="rule-expl-note" x-text="configRuleText(l)"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+          </div>
+        </template>
+      </div>
+
+      <aside class="model-quick-nav" aria-label="上游模型快捷导航">
+        <nav>
+          <template x-for="(u, ui) in upstreams" :key="u.model">
+            <a :href="'#' + upstreamAnchor(u.model)" :class="{ disabled: !u.enabled }">
+              <span class="model-quick-nav-number" x-text="ui + 1"></span>
+              <span class="model-quick-nav-name" x-text="u.model"></span>
+            </a>
+          </template>
+        </nav>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ==================== 3. 调用历史 (Logs Tab) ==================== -->
+  <section x-show="tab === 'logs'">
+    <div class="section-header logs-heading">
+      <div class="section-title-wrap">
+        <h2 class="section-title">调用历史日志</h2>
+        <p class="section-desc">检索与审计经由网关代理的全部请求日志，查看延迟与 Token 消耗</p>
+      </div>
+    </div>
+
+    <div class="logs-query-card">
+      <div class="logs-query-main">
+        <label class="query-field">
+          <span>入口模型</span>
+          <select class="select" x-model="logFilters.entry_model">
+            <option value="">全部入口模型</option>
+            <template x-for="g in groups" :key="g.entry_model">
+              <option :value="g.entry_model" x-text="g.entry_model"></option>
+            </template>
+          </select>
+        </label>
+        <label class="query-field">
+          <span>上游模型</span>
+          <select class="select" x-model="logFilters.upstream_model">
+            <option value="">全部上游模型</option>
+            <template x-for="u in upstreams" :key="u.model">
+              <option :value="u.model" x-text="u.model"></option>
+            </template>
+          </select>
+        </label>
+        <label class="query-field query-status-field">
+          <span>状态</span>
+          <select class="select" x-model="logFilters.status">
+            <option value="">全部状态</option>
+            <template x-for="status in logStatuses" :key="status">
+              <option :value="status" x-text="status"></option>
+            </template>
+            <template x-for="kind in logErrorKinds" :key="'error:' + kind">
+              <option :value="'error:' + kind" x-text="kind"></option>
+            </template>
+          </select>
+        </label>
+      </div>
+
+      <div class="time-query-group">
+        <div class="time-query-title">时间范围</div>
+        <div class="time-query-controls">
+          <input class="input" type="datetime-local" aria-label="开始时间" x-model="logFilters.from">
+          <span class="time-separator">至</span>
+          <input class="input" type="datetime-local" aria-label="结束时间" x-model="logFilters.to">
+          <div class="quick-range-segment" aria-label="快捷时间范围">
+            <template x-for="r in [{h:1,l:'1小时'},{h:3,l:'3小时'},{h:6,l:'6小时'},{h:12,l:'12小时'},{h:24,l:'1天'},{h:48,l:'2天'},{h:168,l:'7天'}]" :key="r.h">
+              <button type="button" @click="setLogRange(r.h)" x-text="r.l"></button>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="logs-query-actions">
+        <button class="btn btn-primary" @click="applyLogFilters()">查询</button>
+        <button class="btn btn-secondary" @click="loadLogs()">
+          <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          刷新
+        </button>
+        <span class="query-action-spacer"></span>
+        <button class="btn btn-danger btn-sm" @click="pruneLogs()">清理日志…</button>
+      </div>
+    </div>
+
+    <!-- Logs Table -->
+    <div class="table-card">
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>时间 <span style="text-transform: none; font-weight: normal; color: var(--fg-muted);" x-text="`(${clock.timezone || ''})`"></span></th>
+              <th>入口模型</th>
+              <th>命中上游</th>
+              <th>状态码</th>
+              <th>输入 Tokens</th>
+              <th>输出 Tokens</th>
+              <th>响应耗时</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="l in logs" :key="l.request_id">
+              <tr :class="{ 'row-bad': l.status >= 400 }">
+                <td class="cell-mono">
+                  <local-time x-effect="$el.setAttribute('value', l.created_at || '')"></local-time>
+                </td>
+                <td>
+                  <strong style="font-weight: 500;" x-text="l.entry_model"></strong>
+                </td>
+                <td>
+                  <span class="cell-mono" x-text="l.upstream_model || '-'"></span>
+                </td>
+                <td>
+                  <span class="badge" :class="l.status < 400 ? 'badge-ok' : 'badge-danger'" x-text="l.error_kind || l.status"></span>
+                </td>
+                <td class="cell-mono" :class="{ 'cell-muted': l.prompt_tokens == null }" x-text="l.prompt_tokens ?? '-'"></td>
+                <td class="cell-mono" :class="{ 'cell-muted': l.completion_tokens == null }" x-text="l.completion_tokens ?? '-'"></td>
+                <td class="cell-mono" :class="{ 'cell-muted': !l.latency_ms }" x-text="l.latency_ms ? l.latency_ms + ' ms' : '-'"></td>
+              </tr>
+            </template>
+            <template x-if="!logs.length">
+              <tr>
+                <td colspan="7" style="text-align: center; padding: 36px; color: var(--fg-muted);">
+                  暂无调用记录
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div class="logs-pagination">
+        <span x-text="`共 ${logTotal} 条`"></span>
+        <nav class="page-number-nav" aria-label="调用日志分页">
+          <button class="btn btn-secondary btn-sm" :disabled="logPage <= 1" @click="changeLogPage(-1)">上一页</button>
+          <template x-for="item in logPaginationItems()" :key="item">
+            <span>
+              <span x-show="typeof item !== 'number'" class="page-ellipsis">…</span>
+              <button x-show="typeof item === 'number'" type="button" class="page-number"
+                      :class="{ active: item === logPage }" :aria-current="item === logPage ? 'page' : null"
+                      @click="goToLogPage(item)" x-text="item"></button>
+            </span>
+          </template>
+          <button class="btn btn-secondary btn-sm" :disabled="logPage >= logTotalPages" @click="changeLogPage(1)">下一页</button>
+        </nav>
+        <label>每页
+          <select class="select" x-model.number="logPageSize" @change="changeLogPageSize()">
+            <option :value="10">10</option><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option><option :value="200">200</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="./app.js?v=20260904-12"></script>
+</body>
+</html>

@@ -1,0 +1,320 @@
+/* Status Tab Styles */
+
+/* Metrics Overview Bar */
+.status-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  padding: 10px 14px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--fg-primary);
+  letter-spacing: -0.02em;
+}
+
+.status-copy {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: normal;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.status-copy:hover,
+.status-copy:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+/* Routing Groups Deck */
+.groups-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.group-status-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.group-card-head {
+  padding: 8px 12px;
+  background-color: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.group-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.group-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg-primary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-routes-list {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.group-route-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  min-height: 32px;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background-color: transparent;
+  font-size: 12px;
+  transition: background-color 0.15s ease;
+}
+
+.group-route-item:last-child {
+  border-bottom: none;
+}
+
+.group-route-item:hover {
+  background-color: var(--bg-subtle);
+}
+
+.group-route-item.disabled {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.route-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.route-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.route-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Upstream Status Cards Grid */
+.upstreams-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px;
+}
+
+.upstream-status-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  transition: border-color 0.15s ease;
+}
+
+.upstream-status-card.unavailable {
+  border-color: var(--danger-border);
+  background-color: #fffafb;
+}
+
+.upstream-status-card.disabled {
+  opacity: 0.6;
+}
+
+.upstream-card-head {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.upstream-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.upstream-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.upstream-model-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg-primary);
+}
+
+.upstream-id-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+  background: var(--bg-subtle);
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border-default);
+  width: fit-content;
+}
+
+/* Status Rules Container */
+.status-rules-container {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.empty-rules-hint {
+  padding: 8px 12px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-rule-item {
+  padding: 7px 12px;
+  background-color: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-default);
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.status-rule-item:last-child {
+  border-bottom: none;
+}
+
+.status-rule-item.failed {
+  border-bottom-color: var(--border-default);
+  background-color: rgba(220, 38, 38, 0.05);
+}
+
+.rule-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rule-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg-secondary);
+}
+
+.rule-metric-val {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg-primary);
+}
+
+.status-rule-item.failed .rule-metric-val {
+  color: var(--danger-fg);
+}
+
+.rule-desc-text {
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.35;
+}
+
+/* Slim modern progress bar */
+.progress-track {
+  height: 4px;
+  width: 100%;
+  background-color: var(--border-default);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.progress-bar {
+  height: 100%;
+  background-color: #000000;
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+.progress-bar.warn {
+  background-color: var(--danger-fg);
+}

@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "v*"
+      - "v2-*"
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -36,9 +36,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest
-            type=ref,event=tag
-            type=sha,format=short
+            type=raw,value=v2-latest
+            type=match,pattern=v2-(.*),group=1,prefix=v2-
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -49,3 +48,71 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  binary:
+    name: Build binary (${{ matrix.name }})
+    if: startsWith(github.ref, 'refs/tags/v2-')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Build
+        run: cross build --locked --release --target "${{ matrix.target }}"
+
+      - name: Package binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="freetier-rotate-middleware-${{ matrix.name }}"
+          tar -C "target/${{ matrix.target }}/release" \
+            -czf "${archive}.tar.gz" \
+            freetier-rotate-middleware
+          sha256sum "${archive}.tar.gz" > "${archive}.tar.gz.sha256"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.name }}
+          path: |
+            freetier-rotate-middleware-*.tar.gz
+            freetier-rotate-middleware-*.sha256
+          if-no-files-found: error
+
+  binary-release:
+    name: Publish binary release
+    if: startsWith(github.ref, 'refs/tags/v2-')
+    needs: binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/*
+          generate_release_notes: true

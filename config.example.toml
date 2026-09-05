@@ -1,0 +1,88 @@
+# freetier-rotate-middleware v2 configuration.
+#
+# This file is the single source of truth for routing. The gateway edits it in
+# place when you change settings from the web UI or over MCP, and your comments
+# and formatting are preserved across those writes. SQLite holds only call
+# history and runtime counters — never configuration.
+version = 2
+
+[server]
+port = 3001
+# One prefix for everything this process serves — the web UI, the admin API,
+# /v1/* and /mcp — so the gateway can sit behind a proxy on a sub-path.
+# "/" mounts at the root; "/gw" puts the UI at /gw/ and the API at /gw/api/...
+# Overridable with PATH_PREFIX.
+path_prefix = "/"
+# The OpenAI-compatible upstream. Requests go to
+# {upstream_base_url}/v1/chat/completions with the client's Authorization
+# header forwarded as-is; this gateway does not manage upstream keys.
+upstream_base_url = "http://ubuntu.local.ai:3000"
+database_path = "./data/gateway.sqlite"
+# IANA timezone for time_window limits and for the times shown in the UI.
+# Leave empty to use the host's timezone, read once at startup.
+timezone = ""
+# debug / info / warn / error
+log_level = "info"
+
+# ---------------------------------------------------------------------------
+# Upstreams: the models the gateway can route to, each owning its own quota.
+#
+# model is both the unique identity groups refer to and the name sent upstream.
+#
+# Every limit under an upstream must pass for it to be eligible: hitting any
+# single limit takes that upstream out of rotation until the limit clears.
+# All entry models pointing at an upstream share its counters, so the numbers
+# here track the real account quota rather than a per-entry approximation.
+#
+# Limit types:
+#   frequency      count requests per period
+#   tokens         count tokens per period, optionally weighted per token class
+#   time_window    forbid the upstream during wall-clock windows (local time)
+#   error_backoff  pull the upstream after repeated failures
+# ---------------------------------------------------------------------------
+
+[[upstreams]]
+model = "gpt-5-nano"
+limits = [
+  { type = "frequency", count = 5, period = "1min" },
+]
+
+[[upstreams]]
+model = "gemini-3.1-flash-lite"
+limits = [
+  { type = "tokens", count = "100K", period = "1h" },
+]
+
+[[upstreams]]
+model = "qwen3.8-27b"
+limits = [
+  { type = "frequency", count = 5, period = "1min" },
+]
+
+[[upstreams]]
+model = "qwen3.6-27b"
+limits = [
+  { type = "frequency", count = 5, period = "1min" },
+  # Off-limits during the morning peak, in the timezone set above. A window
+  # whose end is before its start crosses midnight, e.g. "22:00"-"02:00".
+  # Add `days = [1, 2, 3, 4, 5]` to restrict it to weekdays (1 = Monday).
+  { type = "time_window", forbidden = [
+    { start = "08:00", end = "10:00" },
+  ] },
+]
+
+# ---------------------------------------------------------------------------
+# Entry models: the model names clients ask for, mapped by priority.
+#
+# Dispatch: highest priority first; equal priorities round-robin; an upstream
+# that is out of quota or failing is skipped and the next one is tried.
+# ---------------------------------------------------------------------------
+
+[[groups]]
+entry_model = "group-test"
+routes = [
+  { upstream = "gpt-5-nano", priority = 100 },
+  { upstream = "gemini-3.1-flash-lite", priority = 90 },
+  { upstream = "qwen3.8-27b", priority = 80 },
+  { upstream = "qwen3.6-27b", priority = 70 },
+]

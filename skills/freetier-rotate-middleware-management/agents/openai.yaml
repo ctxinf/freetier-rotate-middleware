@@ -1,4 +1,4 @@
 interface:
-  display_name: "Gateway Admin API"
-  short_description: "Manage routes and inspect status JSON for this gateway"
-  default_prompt: "Use $freetier-gateway-admin-status to manage routes and inspect gateway runtime status."
+  display_name: "freetier-rotate-middleware Admin"
+  short_description: "Inspect and edit routing, quotas and time-window limits for freetier-rotate-middleware v2"
+  default_prompt: "Use $freetier-rotate-middleware-management to inspect gateway routing state and manage upstreams, groups and rate limits."

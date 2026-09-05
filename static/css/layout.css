@@ -1,0 +1,221 @@
+/* Layout & Structural Styling */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 56px;
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+}
+
+.header-inner {
+  max-width: var(--max-width);
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.brand-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: #000000;
+  color: #ffffff;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.brand-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--fg-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Nav Tabs: Vercel style clean pills / indicator */
+.nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--bg-subtle);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+}
+
+.nav-tab-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.nav-tab-btn:hover {
+  color: var(--fg-primary);
+}
+
+.nav-tab-btn.active {
+  background-color: var(--bg-surface);
+  color: var(--fg-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+.header-spacer {
+  flex: 1;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Gateway timezone badge */
+tz-badge, .tz-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  line-height: 1.2;
+}
+
+/* Main Container */
+.main-content {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+}
+
+/* Section Header */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.section-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg-primary);
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sub-section Dividers */
+.sub-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 36px;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.sub-section-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--fg-primary);
+}
+
+/* Common Flex Helpers */
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flex-gap-8 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    height: auto;
+    padding: 12px 16px;
+  }
+  
+  .header-inner {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .header-spacer {
+    display: none;
+  }
+  
+  .main-content {
+    padding: 20px 16px 60px;
+  }
+  
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .section-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

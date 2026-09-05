@@ -1,0 +1,567 @@
+/* Config Tab Styles */
+
+/* Big Tab Switch in Config Tab */
+.config-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.big-tab-switch {
+  display: inline-flex;
+  background-color: var(--bg-surface);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 4px;
+}
+
+.big-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 18px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.big-tab-btn:hover {
+  color: var(--fg-primary);
+  background-color: var(--bg-subtle);
+}
+
+.big-tab-btn.active {
+  background-color: #18181b;
+  color: #ffffff;
+  border-color: #18181b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.big-tab-btn .tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: rgba(0, 0, 0, 0.08);
+  color: inherit;
+}
+
+.big-tab-btn.active .tab-badge {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.config-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  margin: 0;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.config-card:focus-within {
+  border-color: var(--border-strong);
+}
+
+.config-card.disabled {
+  opacity: 0.7;
+}
+
+.upstream-config-layout {
+  display: block;
+}
+
+.upstream-config-list {
+  min-width: 0;
+}
+
+.config-item-list,
+.upstream-config-list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.5rem, 3vw, 3rem);
+}
+
+.upstream-anchor {
+  scroll-margin-top: 72px;
+}
+
+.model-quick-nav {
+  position: fixed;
+  top: 25%;
+  left: max(12px, calc(50vw - (var(--max-width) / 2) - 206px));
+  transform: translateY(-50%);
+  z-index: 40;
+  width: 190px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+}
+
+.model-quick-nav nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.model-quick-nav a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-secondary);
+  font-size: 12px;
+}
+
+.model-quick-nav a:hover {
+  color: var(--fg-primary);
+  background: var(--accent-light);
+}
+
+.model-quick-nav a.disabled {
+  opacity: 0.5;
+}
+
+.model-quick-nav-number {
+  flex: 0 0 auto;
+  width: 20px;
+  text-align: right;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.model-quick-nav-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+@media (max-width: 1024px) {
+  .upstream-config-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .model-quick-nav {
+    position: sticky;
+    top: 68px;
+    transform: none;
+    z-index: 20;
+    width: 100%;
+    max-height: none;
+  }
+
+  .model-quick-nav nav {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .model-quick-nav a {
+    flex: 0 0 auto;
+    max-width: 180px;
+  }
+}
+
+.config-card-header {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-default);
+  gap: 12px;
+}
+
+.config-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.entry-model-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg-primary);
+  background: transparent;
+  padding: 1px 7px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.entry-model-copy {
+  appearance: none;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 4px;
+  box-shadow: none;
+  background: transparent;
+  color: var(--fg-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.entry-model-copy code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.entry-model-copy:hover,
+.entry-model-copy:focus-visible {
+  background-color: var(--bg-muted);
+  outline: none;
+}
+
+.config-card-body {
+  padding: 8px 12px;
+}
+
+.config-card-body.compact-list {
+  padding: 0;
+}
+
+/* Route Group Inner List - Ultra Compact Flush Rows */
+.routes-table-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+}
+
+.route-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 12px;
+  background-color: var(--bg-surface);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  transition: background-color 0.15s ease;
+}
+
+.route-row:last-child {
+  border-bottom: 0;
+}
+
+.route-row:hover {
+  background-color: var(--bg-subtle);
+}
+
+.route-row-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.route-row-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-upstream-select {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--fg-primary);
+  flex: 1;
+  max-width: 360px;
+}
+
+.route-priority-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+.prio-input {
+  width: 58px !important;
+  text-align: center !important;
+  font-family: var(--font-mono) !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+}
+
+.reorder-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.group-card-footer {
+  padding: 6px 12px;
+  background-color: var(--bg-subtle);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+}
+
+.upstream-model-input {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--fg-primary) !important;
+}
+
+/* Upstream Config Header Fields */
+.upstream-meta-fields {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.upstream-field-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.upstream-field-group input {
+  font-family: var(--font-mono);
+}
+
+/* Limits Management Section */
+.limits-section {
+  border-top: 1px solid var(--border-default);
+  background-color: var(--bg-surface);
+}
+
+.limits-toolbar {
+  padding: 8px 14px;
+  background-color: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.limits-toolbar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.limits-add-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.limits-list {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.empty-limits-box {
+  padding: 12px 14px;
+  margin: 8px 14px;
+  text-align: center;
+  color: var(--fg-muted);
+  font-size: 12px;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+/* Individual Limit Edit Card */
+.limit-card {
+  padding: 8px 14px;
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-default);
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.limit-card:last-child {
+  border-bottom: 0;
+}
+
+.limit-card:hover {
+  background-color: var(--bg-subtle);
+}
+
+.limit-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.limit-type-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 2px 0;
+  color: var(--fg-secondary);
+}
+
+.limit-type-pill .num-idx {
+  border: none;
+  background: transparent;
+}
+
+.limit-type-pill .rule-number {
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.limit-inputs-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.limit-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.limit-field input {
+  font-family: var(--font-mono);
+}
+
+/* Weight modifier styling */
+.weight-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+/* Time Window Day Selector Pills */
+.weekday-selector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.weekday-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background-color: var(--bg-surface);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.weekday-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--fg-primary);
+}
+
+.weekday-btn.active {
+  background-color: #000000;
+  border-color: #000000;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.time-ranges-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.time-range-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Sleek rule explanation note */
+.rule-expl-note {
+  font-size: 11px;
+  color: #78350f;
+  padding: 2px 8px;
+  border-left: 2px solid var(--border-strong);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+  .upstream-config-list,
+  .model-quick-nav {
+    width: 100%;
+  }
+
+  .route-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .upstream-meta-fields {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
