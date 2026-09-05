@@ -2,6 +2,8 @@
 
 一个面向个人免费额度聚合场景的AI网关。  
 
+> Ref: Rust 重构的提升版见 [`v2` 分支](https://github.com/ctxinf/freetier-rotate-middleware/tree/v2)。除了支持 `rotate`，还支持 `frequency`、`tokens`、`time_window`、`error_backoff` 等新 rules。
+
 使用前:
 ```
 手动制定model: doubao-seed-2-0-pro-260215
